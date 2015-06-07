@@ -1,0 +1,363 @@
+---
+
+name: Install software
+yum: name={{ item }} state=present
+with_items:
+- openstack-nova-compute
+- openstack-utils
+- python-cinder
+- openstack-neutron-openvswitch
+- openstack-ceilometer-compute
+- python-memcached
+- wget
+- openstack-neutron
+
+name: openstack-command set vncserver_proxyclient_address
+command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT vncserver_proxyclient_address $(ip addr show dev vmnet0 scope global | grep inet | sed -e 's#.*inet ##g' -e 's#/.*##g')
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set vncserver_listen
+command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT vncserver_listen 0.0.0.0
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set novncproxy_base_url
+command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT novncproxy_base_url http://{{ PHD_VAR_network_hosts_gateway }}.{{ PHD_VAR_network_domain }}:6080/vnc_auto.html
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set connection
+command: openstack-config --verbose --set /etc/nova/nova.conf database connection mysql://nova:novatest@vip-db/nova
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set max_retries
+command: openstack-config --verbose --set /etc/nova/nova.conf database max_retries -1
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set auth_strategy
+command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT auth_strategy keystone
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set memcache_servers
+command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT memcache_servers {{ PHD_VAR_network_hosts_memcache }}
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set rabbit_hosts
+command: openstack-config --verbose --set /etc/nova/nova.conf oslo_messaging_rabbit rabbit_hosts {{ PHD_VAR_network_hosts_rabbitmq }}
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set rabbit_ha_queues
+command: openstack-config --verbose --set /etc/nova/nova.conf oslo_messaging_rabbit rabbit_ha_queues true
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set metadata_host
+command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT metadata_host {{ PHD_VAR_network_internal }}.210
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set metadata_listen
+command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT metadata_listen 0.0.0.0
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set metadata_listen_port
+command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT metadata_listen_port 8775
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set service_metadata_proxy
+command: openstack-config --verbose --set /etc/nova/nova.conf neutron service_metadata_proxy True
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set metadata_proxy_shared_secret
+command: openstack-config --verbose --set /etc/nova/nova.conf neutron metadata_proxy_shared_secret metatest
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set host
+command: openstack-config --verbose --set /etc/nova/nova.conf glance host vip-glance
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set network_api_class
+command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT network_api_class nova.network.neutronv2.api.API
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set url
+command: openstack-config --verbose --set /etc/nova/nova.conf neutron url http://vip-neutron:9696/
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_tenant_name
+command: openstack-config --verbose --set /etc/nova/nova.conf neutron admin_tenant_name services
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_username
+command: openstack-config --verbose --set /etc/nova/nova.conf neutron admin_username neutron
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_password
+command: openstack-config --verbose --set /etc/nova/nova.conf neutron admin_password neutrontest
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_auth_url
+command: openstack-config --verbose --set /etc/nova/nova.conf neutron admin_auth_url http://vip-keystone:35357/v2.0
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set firewall_driver
+command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT firewall_driver nova.virt.firewall.NoopFirewallDriver
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set libvirt_vif_driver
+command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT libvirt_vif_driver nova.virt.libvirt.vif.LibvirtGenericVIFDriver
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set security_group_api
+command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT security_group_api neutron
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set use_local
+command: openstack-config --verbose --set /etc/nova/nova.conf conductor use_local false
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set scheduler_host_subset_size
+command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT scheduler_host_subset_size 30
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set auth_host
+command: openstack-config --verbose --set /etc/nova/api-paste.ini filter:authtoken auth_host vip-keystone
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_tenant_name
+command: openstack-config --verbose --set /etc/nova/api-paste.ini filter:authtoken admin_tenant_name services
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_user
+command: openstack-config --verbose --set /etc/nova/api-paste.ini filter:authtoken admin_user compute
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_password
+command: openstack-config --verbose --set /etc/nova/api-paste.ini filter:authtoken admin_password novatest
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set auth_strategy
+command: openstack-config --verbose --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_tenant_name
+command: openstack-config --verbose --set /etc/neutron/neutron.conf keystone_authtoken admin_tenant_name services
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_user
+command: openstack-config --verbose --set /etc/neutron/neutron.conf keystone_authtoken admin_user neutron
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_password
+command: openstack-config --verbose --set /etc/neutron/neutron.conf keystone_authtoken admin_password neutrontest
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set auth_uri
+command: openstack-config --verbose --set /etc/neutron/neutron.conf keystone_authtoken auth_uri http://vip-keystone:35357/v2.0/
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set identity_uri
+command: openstack-config --verbose --set /etc/neutron/neutron.conf keystone_authtoken identity_uri http://vip-keystone:5000/
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set rabbit_hosts
+command: openstack-config --verbose --set /etc/neutron/neutron.conf oslo_messaging_rabbit rabbit_hosts {{ PHD_VAR_network_hosts_rabbitmq }}
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set rabbit_ha_queues
+command: openstack-config --verbose --set /etc/neutron/neutron.conf oslo_messaging_rabbit rabbit_ha_queues true
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set notification_driver
+command: openstack-config --verbose --set /etc/neutron/neutron.conf DEFAULT notification_driver neutron.openstack.common.notifier.rpc_notifier
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set tunnel_types
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini agent tunnel_types vxlan
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set vxlan_udp_port
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini agent vxlan_udp_port 4789
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set enable_tunneling
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini ovs enable_tunneling True
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set tunnel_id_ranges
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini ovs tunnel_id_ranges 1:1000
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set tenant_network_type
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini ovs tenant_network_type vxlan
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set integration_bridge
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini ovs integration_bridge br-int
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set tunnel_bridge
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini ovs tunnel_bridge br-tun
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set local_ip
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini ovs local_ip $(ip addr show dev vmnet0 scope global | grep inet | sed -e 's#.*inet ##g' -e 's#/.*##g')
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set firewall_driver
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini securitygroup firewall_driver neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set l2_population
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini agent l2_population False
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set instance_usage_audit
+command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT instance_usage_audit True
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set instance_usage_audit_period
+command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT instance_usage_audit_period hour
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set notify_on_state_change
+command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT notify_on_state_change vm_and_task_state
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set notification_driver
+command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT notification_driver nova.openstack.common.notifier.rpc_notifier
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set auth_host
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf keystone_authtoken auth_host vip-keystone
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set auth_port
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf keystone_authtoken auth_port 35357
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set auth_protocol
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf keystone_authtoken auth_protocol http
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_tenant_name
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf keystone_authtoken admin_tenant_name services
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_user
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf keystone_authtoken admin_user ceilometer
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_password
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf keystone_authtoken admin_password ceilometertest
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set memcache_servers
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf DEFAULT memcache_servers {{ PHD_VAR_network_hosts_memcache }}
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set rabbit_hosts
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit rabbit_hosts {{ PHD_VAR_network_hosts_rabbitmq }}
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set rabbit_ha_queues
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit rabbit_ha_queues true
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set telemetry_secret
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf publisher telemetry_secret ceilometersecret
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set os_auth_url
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf service_credentials os_auth_url http://vip-keystone:5000/v2.0
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set os_username
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf service_credentials os_username ceilometer
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set os_tenant_name
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf service_credentials os_tenant_name services
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set os_password
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf service_credentials os_password ceilometertest
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set connection
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf database connection mongodb://{{ PHD_VAR_network_hosts_mongodb }}:27017/ceilometer?replicaSet=ceilometer
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set connection
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf database connection max_retries -1
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set metering_time_to_live
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf database metering_time_to_live 432000
+register: cmd
+changed_when: "'changed' in cmd.stderr"

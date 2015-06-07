@@ -1,0 +1,9 @@
+---
+
+name: Install software
+yum: name={{ item }} state=present
+with_items:
+- pacemaker-remote
+- resource-agents
+- pcs
+- nfs-utils

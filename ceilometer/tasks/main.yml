@@ -1,0 +1,108 @@
+---
+
+name: Install software
+yum: name={{ item }} state=present
+with_items:
+- openstack-ceilometer-api
+- openstack-ceilometer-central
+- openstack-ceilometer-collector
+- openstack-ceilometer-common
+- openstack-ceilometer-alarm
+- python-ceilometer
+- python-ceilometerclient
+- redis
+
+name: openstack-command set auth_host
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf keystone_authtoken auth_host vip-keystone
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set auth_port
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf keystone_authtoken auth_port 35357
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set auth_protocol
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf keystone_authtoken auth_protocol http
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_tenant_name
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf keystone_authtoken admin_tenant_name services
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_user
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf keystone_authtoken admin_user ceilometer
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_password
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf keystone_authtoken admin_password ceilometertest
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set memcache_servers
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf DEFAULT memcache_servers {{ PHD_VAR_network_hosts_memcache }}
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set rabbit_hosts
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit rabbit_hosts {{ PHD_VAR_network_hosts_rabbitmq }}
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set rabbit_ha_queues
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit rabbit_ha_queues true
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set backend_url
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf coordination backend_url 'redis://vip-redis:6379'
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set telemetry_secret
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf publisher telemetry_secret ceilometersecret
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set os_auth_url
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf service_credentials os_auth_url http://vip-keystone:5000/v2.0
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set os_username
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf service_credentials os_username ceilometer
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set os_tenant_name
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf service_credentials os_tenant_name services
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set os_password
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf service_credentials os_password ceilometertest
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set connection
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf database connection mongodb://{{ PHD_VAR_network_hosts_mongodb }}:27017/ceilometer?replicaSet=ceilometer
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set max_retries
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf database max_retries -1
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set metering_time_to_live
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf database metering_time_to_live 432000
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set host
+command: openstack-config --verbose --set /etc/ceilometer/ceilometer.conf api host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+register: cmd
+changed_when: "'changed' in cmd.stderr"

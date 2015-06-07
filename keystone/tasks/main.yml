@@ -1,0 +1,58 @@
+---
+
+name: Install software
+yum: name={{ item }} state=present
+with_items:
+- openstack-keystone
+- openstack-utils
+- python-openstackclient
+
+name: openstack-command set admin_token
+command: openstack-config --verbose --set /etc/keystone/keystone.conf DEFAULT admin_token {{ PHD_VAR_secrets_keystone_secret }}
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set rabbit_hosts
+command: openstack-config --verbose --set /etc/keystone/keystone.conf DEFAULT rabbit_hosts {{ PHD_VAR_network_hosts_rabbitmq }}
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set rabbit_ha_queues
+command: openstack-config --verbose --set /etc/keystone/keystone.conf DEFAULT rabbit_ha_queues true
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_endpoint
+command: openstack-config --verbose --set /etc/keystone/keystone.conf DEFAULT admin_endpoint 'http://vip-keystone:%(admin_port)s/'
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set public_endpoint
+command: openstack-config --verbose --set /etc/keystone/keystone.conf DEFAULT public_endpoint 'http://vip-keystone:%(public_port)s/'
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set connection
+command: openstack-config --verbose --set /etc/keystone/keystone.conf database connection mysql://keystone:keystonetest@vip-db/keystone
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set max_retries
+command: openstack-config --verbose --set /etc/keystone/keystone.conf database max_retries -1
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set public_bind_host
+command: openstack-config --verbose --set /etc/keystone/keystone.conf eventlet_server public_bind_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_bind_host
+command: openstack-config --verbose --set /etc/keystone/keystone.conf eventlet_server admin_bind_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set driver
+command: openstack-config --verbose --set /etc/keystone/keystone.conf token driver keystone.token.persistence.backends.sql.Token
+register: cmd
+changed_when: "'changed' in cmd.stderr"

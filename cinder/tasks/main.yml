@@ -1,0 +1,110 @@
+---
+
+name: Install software
+yum: name={{ item }} state=present
+with_items:
+- openstack-cinder
+- openstack-utils
+- python-memcached
+- python-keystonemiddleware
+- python-openstackclient
+
+name: openstack-command set connection
+command: openstack-config --verbose --set /etc/cinder/cinder.conf database connection mysql://cinder:cindertest@vip-db/cinder
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set max_retries
+command: openstack-config --verbose --set /etc/cinder/cinder.conf database max_retries -1
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set auth_strategy
+command: openstack-config --verbose --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set identity_uri
+command: openstack-config --verbose --set /etc/cinder/cinder.conf keystone_authtoken identity_uri http://vip-keystone:35357/
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set auth_uri
+command: openstack-config --verbose --set /etc/cinder/cinder.conf keystone_authtoken auth_uri http://vip-keystone:5000/
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_tenant_name
+command: openstack-config --verbose --set /etc/cinder/cinder.conf keystone_authtoken admin_tenant_name services
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_user
+command: openstack-config --verbose --set /etc/cinder/cinder.conf keystone_authtoken admin_user cinder
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_password
+command: openstack-config --verbose --set /etc/cinder/cinder.conf keystone_authtoken admin_password cindertest
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set notification_driver
+command: openstack-config --verbose --set /etc/cinder/cinder.conf DEFAULT notification_driver messaging
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set control_exchange
+command: openstack-config --verbose --set /etc/cinder/cinder.conf DEFAULT control_exchange cinder
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set glance_host
+command: openstack-config --verbose --set /etc/cinder/cinder.conf DEFAULT glance_host vip-glance
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set memcache_servers
+command: openstack-config --verbose --set /etc/cinder/cinder.conf DEFAULT memcache_servers {{ PHD_VAR_network_hosts_memcache }}
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set rabbit_hosts
+command: openstack-config --verbose --set /etc/cinder/cinder.conf oslo_messaging_rabbit rabbit_hosts {{ PHD_VAR_network_hosts_rabbitmq }}
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set rabbit_ha_queues
+command: openstack-config --verbose --set /etc/cinder/cinder.conf oslo_messaging_rabbit rabbit_ha_queues true
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set host
+command: openstack-config --verbose --set /etc/cinder/cinder.conf DEFAULT host rdo{{ PHD_VAR_osp_major }}-cinder
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set osapi_volume_listen
+command: openstack-config --verbose --set /etc/cinder/cinder.conf DEFAULT osapi_volume_listen $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set nfs_shares_config
+command: openstack-config --verbose --set /etc/cinder/cinder.conf DEFAULT nfs_shares_config /etc/cinder/nfs_exports
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set nfs_sparsed_volumes
+command: openstack-config --verbose --set /etc/cinder/cinder.conf DEFAULT nfs_sparsed_volumes true
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set nfs_mount_options
+command: openstack-config --verbose --set /etc/cinder/cinder.conf DEFAULT nfs_mount_options v3
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set volume_driver
+command: openstack-config --verbose --set /etc/cinder/cinder.conf DEFAULT volume_driver cinder.volume.drivers.nfs.NfsDriver
+register: cmd
+changed_when: "'changed' in cmd.stderr"

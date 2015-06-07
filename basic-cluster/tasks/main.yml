@@ -1,0 +1,23 @@
+---
+
+name: Install software
+yum: name={{ item }} state=present
+with_items:
+- http://rhos-release.virt.bos.redhat.com/repos/rhos-release/rhos-release-latest.noarch.rpm
+
+name: Install software
+yum: name={{ item }} state=present
+with_items:
+- update
+
+name: Install software
+yum: name={{ item }} state=present
+with_items:
+- pcs
+- pacemaker
+- corosync
+- fence-agents-all
+- resource-agents
+- nfs-utils
+- ntp
+- ntpdate

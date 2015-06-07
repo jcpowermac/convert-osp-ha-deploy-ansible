@@ -1,0 +1,9 @@
+---
+
+name: Install software
+yum: name={{ item }} state=present
+with_items:
+- mod_wsgi
+- httpd
+- mod_ssl
+- openstack-dashboard

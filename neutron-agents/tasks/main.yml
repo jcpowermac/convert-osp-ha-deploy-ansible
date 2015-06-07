@@ -1,0 +1,153 @@
+---
+
+name: Install software
+yum: name={{ item }} state=present
+with_items:
+- openstack-neutron
+- openstack-neutron-openvswitch
+- openvswitch
+
+name: openstack-command set tunnel_types
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini agent tunnel_types vxlan
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set vxlan_udp_port
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini agent vxlan_udp_port 4789
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set local_ip
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini ovs local_ip $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set enable_tunneling
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini ovs enable_tunneling True
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set integration_bridge
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini ovs integration_bridge br-int
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set tunnel_bridge
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini ovs tunnel_bridge br-tun
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set bridge_mappings
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini ovs bridge_mappings physnet1:br-ex
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set firewall_driver
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini securitygroup firewall_driver neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set l2_population
+command: openstack-config --verbose --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini agent l2_population False
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set auth_strategy
+command: openstack-config --verbose --set /etc/neutron/metadata_agent.ini DEFAULT auth_strategy keystone
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set auth_url
+command: openstack-config --verbose --set /etc/neutron/metadata_agent.ini DEFAULT auth_url http://vip-keystone:35357/v2.0
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set auth_host
+command: openstack-config --verbose --set /etc/neutron/metadata_agent.ini DEFAULT auth_host vip-keystone
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set auth_region
+command: openstack-config --verbose --set /etc/neutron/metadata_agent.ini DEFAULT auth_region regionOne
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_tenant_name
+command: openstack-config --verbose --set /etc/neutron/metadata_agent.ini DEFAULT admin_tenant_name services
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_user
+command: openstack-config --verbose --set /etc/neutron/metadata_agent.ini DEFAULT admin_user neutron
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set admin_password
+command: openstack-config --verbose --set /etc/neutron/metadata_agent.ini DEFAULT admin_password neutrontest
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set nova_metadata_ip
+command: openstack-config --verbose --set /etc/neutron/metadata_agent.ini DEFAULT nova_metadata_ip vip-nova
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set nova_metadata_port
+command: openstack-config --verbose --set /etc/neutron/metadata_agent.ini DEFAULT nova_metadata_port 8775
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set metadata_proxy_shared_secret
+command: openstack-config --verbose --set /etc/neutron/metadata_agent.ini DEFAULT metadata_proxy_shared_secret metatest
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set metadata_workers
+command: openstack-config --verbose --set /etc/neutron/metadata_agent.ini DEFAULT metadata_workers 4
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set metadata_backlog
+command: openstack-config --verbose --set /etc/neutron/metadata_agent.ini DEFAULT metadata_backlog 2048
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set interface_driver
+command: openstack-config --verbose --set /etc/neutron/dhcp_agent.ini DEFAULT interface_driver neutron.agent.linux.interface.OVSInterfaceDriver
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set dhcp_delete_namespaces
+command: openstack-config --verbose --set /etc/neutron/dhcp_agent.ini DEFAULT dhcp_delete_namespaces False
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set dnsmasq_dns_servers
+command: openstack-config --verbose --set /etc/neutron/dhcp_agent.ini DEFAULT dnsmasq_dns_servers 10.35.255.14
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set interface_driver
+command: openstack-config --verbose --set /etc/neutron/l3_agent.ini DEFAULT interface_driver neutron.agent.linux.interface.OVSInterfaceDriver
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set handle_internal_only_routers
+command: openstack-config --verbose --set /etc/neutron/l3_agent.ini DEFAULT handle_internal_only_routers True
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set send_arp_for_ha
+command: openstack-config --verbose --set /etc/neutron/l3_agent.ini DEFAULT send_arp_for_ha 3
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set router_delete_namespaces
+command: openstack-config --verbose --set /etc/neutron/l3_agent.ini DEFAULT router_delete_namespaces False
+register: cmd
+changed_when: "'changed' in cmd.stderr"
+
+name: openstack-command set external_network_bridge
+command: openstack-config --verbose --set /etc/neutron/l3_agent.ini DEFAULT external_network_bridge br-ex
+register: cmd
+changed_when: "'changed' in cmd.stderr"
