@@ -1,74 +1,75 @@
 ---
 
-name: Install software
-yum: name={{ item }} state=present
-with_items:
+- name: Install software
+  yum: name={{ item }} state=present
+  with_items:
 - openstack-swift-proxy
 - openstack-utils
 - python-swiftclient
 - python-openstackclient
 
-name: openstack-command set swift_hash_path_prefix
-command: openstack-config --verbose --set /etc/swift/swift.conf swift-hash swift_hash_path_prefix {{ PHD_VAR_secrets_swift_prefix }}
-register: cmd
-changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set swift_hash_path_suffix
-command: openstack-config --verbose --set /etc/swift/swift.conf swift-hash swift_hash_path_suffix {{ PHD_VAR_secrets_swift_suffix }}
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set swift_hash_path_prefix
+  command: openstack-config --verbose --set /etc/swift/swift.conf swift-hash swift_hash_path_prefix {{ PHD_VAR_secrets_swift_prefix }}
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set use
-command: openstack-config --verbose --set /etc/swift/swift.conf filter:ceilometer use egg:ceilometer#swift
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set swift_hash_path_suffix
+  command: openstack-config --verbose --set /etc/swift/swift.conf swift-hash swift_hash_path_suffix {{ PHD_VAR_secrets_swift_suffix }}
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set pipeline
-command: openstack-config --verbose --set /etc/swift/swift.conf pipeline:main pipeline "healthcheck cache authtoken keystoneauth proxy-server ceilometer"
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set use
+  command: openstack-config --verbose --set /etc/swift/swift.conf filter:ceilometer use egg:ceilometer#swift
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_tenant_name
-command: openstack-config --verbose --set /etc/swift/proxy-server.conf filter:authtoken admin_tenant_name services
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set pipeline
+  command: openstack-config --verbose --set /etc/swift/swift.conf pipeline:main pipeline "healthcheck cache authtoken keystoneauth proxy-server ceilometer"
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_user
-command: openstack-config --verbose --set /etc/swift/proxy-server.conf filter:authtoken admin_user swift
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_tenant_name
+  command: openstack-config --verbose --set /etc/swift/proxy-server.conf filter:authtoken admin_tenant_name services
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_password
-command: openstack-config --verbose --set /etc/swift/proxy-server.conf filter:authtoken admin_password swifttest
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_user
+  command: openstack-config --verbose --set /etc/swift/proxy-server.conf filter:authtoken admin_user swift
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set identity_uri
-command: openstack-config --verbose --set /etc/swift/proxy-server.conf filter:authtoken identity_uri http://vip-keystone:35357/
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_password
+  command: openstack-config --verbose --set /etc/swift/proxy-server.conf filter:authtoken admin_password swifttest
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set auth_uri
-command: openstack-config --verbose --set /etc/swift/proxy-server.conf filter:authtoken auth_uri http://vip-keystone:5000/
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set identity_uri
+  command: openstack-config --verbose --set /etc/swift/proxy-server.conf filter:authtoken identity_uri http://vip-keystone:35357/
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set bind_ip
-command: openstack-config --verbose --set /etc/swift/proxy-server.conf DEFAULT bind_ip $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set auth_uri
+  command: openstack-config --verbose --set /etc/swift/proxy-server.conf filter:authtoken auth_uri http://vip-keystone:5000/
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set concurrency
-command: openstack-config --verbose --set /etc/swift/object-expirer.conf object-expirer concurrency 100
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set bind_ip
+  command: openstack-config --verbose --set /etc/swift/proxy-server.conf DEFAULT bind_ip $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set memcache_servers
-command: openstack-config --verbose --set /etc/swift/proxy-server.conf filter:cache memcache_servers {{ PHD_VAR_network_hosts_memcache }}
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set concurrency
+  command: openstack-config --verbose --set /etc/swift/object-expirer.conf object-expirer concurrency 100
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set memcache_servers
-command: openstack-config --verbose --set /etc/swift/object-expirer.conf filter:cache memcache_servers {{ PHD_VAR_network_hosts_memcache }}
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set memcache_servers
+  command: openstack-config --verbose --set /etc/swift/proxy-server.conf filter:cache memcache_servers {{ PHD_VAR_network_hosts_memcache }}
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
+
+- name: openstack-command set memcache_servers
+  command: openstack-config --verbose --set /etc/swift/object-expirer.conf filter:cache memcache_servers {{ PHD_VAR_network_hosts_memcache }}
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"

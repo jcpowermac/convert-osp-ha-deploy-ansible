@@ -1,21 +1,33 @@
 ---
 
-name: Install software
-yum: name={{ item }} state=present
-with_items:
+- name: Install software
+  yum: name={{ item }} state=present
+  with_items:
 - nfs-utils
 
-name: Install software
-yum: name={{ item }} state=present
-with_items:
+- name: systemctl enable nfs-server
+  service: name=enable enabled=yes state=started
+
+- name: Install software
+  yum: name={{ item }} state=present
+  with_items:
 - haproxy
 
-name: Install software
-yum: name={{ item }} state=present
-with_items:
+- name: systemctl enable haproxy
+  service: name=enable enabled=yes state=started
+
+- name: Install software
+  yum: name={{ item }} state=present
+  with_items:
 - bind
 
-name: Install software
-yum: name={{ item }} state=present
-with_items:
+- name: systemctl enable named
+  service: name=enable enabled=yes state=started
+
+- name: Install software
+  yum: name={{ item }} state=present
+  with_items:
 - dhcp
+
+- name: systemctl enable dhcpd
+  service: name=enable enabled=yes state=started

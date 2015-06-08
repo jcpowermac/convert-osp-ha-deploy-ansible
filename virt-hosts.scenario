@@ -1,0 +1,407 @@
+# This file can be used directly by 'phd', see 'build-all.sh' in this
+# directory for how it can be invoked.  The only requirement is a list
+# of nodes you'd like it to modify.
+#
+# The scope of each command-block is controlled by the preceeding
+# 'target' line. 
+#
+# - target=all
+#   The commands are executed on evey node provided
+#
+# - target=local
+#   The commands are executed from the node hosting phd. When not
+#   using phd, they should be run from some other independant host
+#   (such as the puppet master)
+#
+# - target=$PHD_ENV_nodes{N}
+#   The commands are executed on the Nth node provided.
+#   For example, to run on only the first node would be target=$PHD_ENV_nodes1
+#
+# Tasks to be performed for the hosts include:
+# - Install fence_virt so that the guests can be reset by other members of the virtualized clusters
+# - Turning off auto-generation of resolv.conf so we can point to our gateway DNS server
+# - Obtain the golden image from the first host
+# - Clone the golden image for each service, inserting MAC addresses using the same rules as in the 
+#
+# Tasks to be performed when creating the image include:
+# - Installing CentOS 7 
+# - Pointing to the OpenStack, HA-Addon and Updates repositories
+# - Ensuring cloned guests can obtain a DHCP lease
+# - Ensuring consistent network interface names
+# - Adding SSH keys if necessary
+# - Configuring guests to obtain their hostname from DHCP
+
+#################################
+# Scenario Requirements Section #
+#################################
+= VARIABLES =
+
+PHD_VAR_deployment
+PHD_VAR_network_internal
+PHD_VAR_network_nic_base
+PHD_VAR_rpm_download
+PHD_VAR_secrets_fence_xvm
+PHD_VAR_osp_configdir
+PHD_VAR_osp_major
+PHD_VAR_rpm_major
+PHD_VAR_rpm_minor
+PHD_VAR_vm_base
+PHD_VAR_vm_cpus
+PHD_VAR_vm_disk
+PHD_VAR_vm_key
+PHD_VAR_vm_ram
+PHD_VAR_components
+PHD_VAR_rpm_base
+PHD_VAR_rpm_cluster
+PHD_VAR_rpm_download
+PHD_VAR_rpm_updates
+
+#################################
+# Scenario Requirements Section #
+#################################
+= REQUIREMENTS =
+nodes: 4
+
+######################
+# Deployment Scripts #
+######################
+= SCRIPTS =
+
+
+target=all
+....
+
+if [ $(host $(hostname -s) | awk '{print $4}') = $(host $PHD_ENV_nodes1 | awk '{print $4}') ]; then
+    : Everyone except the first node needs to run the commands below
+    exit 0
+fi
+
+if grep -q srv /etc/fstab; then 
+    echo /srv is already defined; 
+else
+    mkdir -p /srv
+    echo "${PHD_VAR_network_internal}.1:/srv       /srv                    nfs     defaults,v3     0 0" >> /etc/fstab
+fi  
+mount -a
+
+# Not required on the gateway, but wont hurt either
+
+yum install -y fence-virtd fence-virtd-multicast fence-virtd-libvirt
+lastoct="$(hostname -s | sed -e 's#^[a-z]*-##g' -e 's#^0*##g')"
+
+cat > /etc/fence_virt.conf << EOF
+fence_virtd {
+        listener = "multicast";
+        backend = "libvirt";
+}
+listeners {
+        multicast {
+                # key_file = "/etc/cluster/fence_xvm.key";
+                address = "225.0.0.$lastoct";
+                # Needed on Fedora systems
+                interface = "vmnet0";
+        }
+}
+backends {
+        libvirt { 
+                uri = "qemu:///system";
+        }
+}
+EOF
+
+mkdir -p /etc/cluster/
+echo ${PHD_VAR_secrets_fence_xvm} > /etc/cluster/fence_xvm.key
+
+systemctl enable fence_virtd
+systemctl start fence_virtd
+....
+
+
+target=$PHD_ENV_nodes1
+....
+
+if [ -e ${PHD_VAR_osp_configdir}/${PHD_VAR_vm_base} ]; then
+    : skip this step if an image already exists
+    exit 0
+fi
+
+distro=${PHD_VAR_rpm_major}.${PHD_VAR_rpm_minor}
+
+# headless - do not bork if we specify --noautoconsole
+# reboot
+
+# Do not specify  --hostname= for network
+# If prevents assinging by DHCP 
+
+targettz="$(timedatectl | grep Timezone | awk '{print $2}')"
+
+if [ -z "$targettz" ]; then
+    targettz=Australia/Melbourne
+fi
+
+cat << EOF > virt-base.ks
+install
+text
+reboot
+rootpw redhat
+lang en_US.UTF-8
+keyboard us
+network --bootproto dhcp
+firewall --enabled --ssh
+selinux --permissive
+timezone --utc $targettz
+bootloader --location=mbr --append="console=tty0 console=ttyS0,115200 rd_NO_PLYMOUTH serial text headless"
+zerombr
+clearpart --all --initlabel
+autopart --type=lvm
+skipx
+
+%packages
+@core
+grep
+gawk
+bind-utils
+vi
+net-tools
+tcpdump
+wget
+sos
+%end
+
+%post
+
+# ethX will do nicely thankyou
+rm -f /lib/udev/rules.d/75-persistent-net-generator.rules
+rm -f /etc/udev/rules.d/70-persistent-net.rules
+
+# Need PEERDNS=no on the external interface to make sure all lookups
+# go to our gateway (otherwise setting setting hostname via dhcp wont
+# work)
+#
+# MUST add 'DEVICE=ethX' when deleting 'HWADDR', otherwise you end up
+# with crazy things like:
+#
+# [root@localhost ~]# ifdown eth0
+# Device 'eth1' successfully disconnected.
+#
+# Let eth0 come up, but don't let it connect to avoid conflicting dhcp
+# and naming issues
+#
+# /usr/share/doc/initscripts/sysconfig.txt
+
+cat > /etc/sysconfig/network-scripts/ifcfg-eth0 << EOT
+NAME="eth0"
+DEVICE="eth0"
+ONBOOT=yes
+BOOTPROTO=none
+TYPE=Ethernet
+IPV4_FAILURE_FATAL=no
+EOT
+
+cat > /etc/sysconfig/network-scripts/ifcfg-eth1 << EOT
+NAME="eth1"
+DEVICE="eth1"
+ONBOOT=yes
+BOOTPROTO=dhcp
+TYPE=Ethernet
+EOT
+
+mkdir /root/.ssh
+cat <<__EOT__ >> /root/.ssh/authorized_keys
+ssh-rsa ${PHD_VAR_vm_key} admin
+__EOT__
+
+chmod 600 /root/.ssh/authorized_keys
+
+# Prevent DHCPNAK by removing stale leases
+# Occurs if we clone the guest and change NICs
+rm -f /var/lib/NetworkManager/dhclient-*.lease
+
+# If hostname is anything other than 'localhost.localdomain', then
+# NetworkManager wont bother looking up DNS/DHCP for the host name
+# when the node boots:
+#
+# May  5 11:04:15 localhost NetworkManager[676]: <info>  Setting system hostname to 'rdo7-node1.vmnet.mpc.lab.eng.bos.redhat.com' (from address lookup)
+hostnamectl set-hostname localhost.localdomain
+
+cat > /etc/yum.repos.d/redhat-${distro}.repo << EOT
+[redhat-${distro}]
+name=redhat-${distro}
+baseurl=http://${PHD_VAR_rpm_download}/${PHD_VAR_rpm_base}
+gpgcheck=0
+enabled=1
+[redhat-ha]
+name=redhat-${distro}-ha
+baseurl=http://${PHD_VAR_rpm_download}/${PHD_VAR_rpm_cluster}
+gpgcheck=0
+enabled=1
+[redhat-z]
+name=redhat-${distro}-z
+baseurl=http://${PHD_VAR_rpm_download}/${PHD_VAR_rpm_updates}
+gpgcheck=0
+enabled=1
+EOT
+
+%end
+EOF
+
+
+yum install -y virt-install 
+virsh destroy rdo${PHD_VAR_osp_major}-rhel${PHD_VAR_rpm_major}-base  &>/dev/null || true
+virsh undefine rdo${PHD_VAR_osp_major}-rhel${PHD_VAR_rpm_major}-base &>/dev/null || true
+
+#Create the qcow2 disk image with preallocation and 'facllocate'(which pre-allocates all the blocks to a file) it for max. performance
+echo "Creating qcow2 disk image.."
+rm -f ${PHD_VAR_osp_configdir}/${PHD_VAR_vm_base}
+mkdir -p ${PHD_VAR_osp_configdir}
+qemu-img create -f qcow2 -o preallocation=metadata ${PHD_VAR_osp_configdir}/${PHD_VAR_vm_base} ${PHD_VAR_vm_disk}
+ls -lash ${PHD_VAR_osp_configdir}/${PHD_VAR_vm_base}
+#fallocate -l $(ls -al ${PHD_VAR_osp_configdir}/${PHD_VAR_vm_base} | awk '{print $5}') ${PHD_VAR_osp_configdir}/${PHD_VAR_vm_base}
+#ls -lash ${PHD_VAR_osp_configdir}/${PHD_VAR_vm_base}
+
+# Turn off install logs
+opts="--noautoconsole"
+opts=""
+
+#    --console pty,target_type=virtio 
+#Create the regular-guest
+virt-install --connect=qemu:///system \
+    --network=bridge:ext0,mac=${PHD_VAR_network_nic_base}:00:00:02 \
+    --initrd-inject=./virt-base.ks \
+    --extra-args="ks=file:/virt-base.ks console=tty0 console=ttyS0,115200 serial rd_NO_PLYMOUTH" \
+    --name=rdo${PHD_VAR_osp_major}-rhel${PHD_VAR_rpm_major}-base \
+    --disk path=${PHD_VAR_osp_configdir}/${PHD_VAR_vm_base},format=qcow2,cache=none \
+    --ram ${PHD_VAR_vm_ram} \
+    --vcpus=${PHD_VAR_vm_cpus} \
+    --check-cpu \
+    --accelerate \
+    --os-type linux \
+    --os-variant rhel${PHD_VAR_rpm_major} \
+    --cpuset auto \
+    --hvm \
+    --location=http://${PHD_VAR_rpm_download}/${PHD_VAR_rpm_base} \
+    --nographics $opts
+
+# Needs 15-20 minutes apparently
+sleep 1200
+....
+
+
+#target=$PHD_ENV_nodes1
+#....
+#virsh define /srv/vms/rhos4-base.xml
+#virsh define /srv/rdo${PHD_VAR_osp_major}-rhel7-vms/rdo${PHD_VAR_osp_major}-rhel7-base.xml
+#....
+
+target=all
+....
+
+which rsync >/dev/null 2>&1 || yum install -y rsync
+
+if [ $(hostname -s | awk -F. '{print $1}') = $(echo $PHD_ENV_nodes1 | awk -F. '{print $1}') ]; then
+    : Everyone except the first node needs to run the commands below
+    exit 0
+fi
+
+mkdir -p /localvms
+
+# cp /srv/vms/rhos4-base.img /localvms/
+if [ ! -e /localvms/${PHD_VAR_vm_base} ]; then
+    # This takes a loooong time, skip it if we already have an image
+    rsync -avz --progress ${PHD_VAR_osp_configdir}/${PHD_VAR_vm_base} /localvms/
+fi
+
+# The internal network must go first so that hostname can be set by
+# DHCP and it will generally be the preferred network
+#
+# Random factoid, setting ONBOOT=no for eth0 will prevent eth1 from
+# being started, even if eth1 has ONBOOT=yes
+
+cat<<-EOF > /localvms/template.xml
+<domain type='kvm'>
+  <name>VM_NAME</name>
+  <memory>${PHD_VAR_vm_ram}000</memory>
+  <currentMemory>${PHD_VAR_vm_ram}000</currentMemory>
+  <vcpu>${PHD_VAR_vm_cpus}</vcpu>
+  <os>
+    <type arch='x86_64' machine='pc'>hvm</type>
+    <boot dev='hd'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+    <pae/>
+  </features>
+  <clock offset='utc'/>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>restart</on_crash>
+  <devices>
+    <emulator>/usr/libexec/qemu-kvm</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2'/>
+      <source file='/srv/rdo${PHD_VAR_osp_major}-rhel7-vms/rdo${PHD_VAR_osp_major}-rhel7-base.img'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+    <interface type='bridge'>
+      <mac address='EXTERNAL_MAC'/>
+      <source bridge='ext0'/>
+      <model type='virtio'/>
+    </interface>
+    <interface type='bridge'>
+      <mac address='INTERNAL_MAC'/>
+      <source bridge='vmnet0'/>
+      <model type='virtio'/>
+    </interface>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+    <input type='tablet' bus='usb'/>
+    <input type='mouse' bus='ps2'/>
+    <graphics type='vnc' port='-1' autoport='yes'/>
+  </devices>
+</domain>
+EOF
+
+sequence=16
+lastoct="$(hostname -s | sed -e 's#^[a-z]*-##g' -e 's#^0*##g')"
+offset="$(echo ${PHD_ENV_nodes1} | sed -e 's#\..*##g' -e 's#^[a-z]*-##g' -e 's#^0*##g')"
+for section in ${PHD_VAR_components}; do
+    cd /localvms/
+
+    target=rdo${PHD_VAR_osp_major}-${section}$(( ${lastoct} - ${offset} ))
+    octet=${sequence}
+
+    sequence=$((sequence + 1))
+
+    virsh destroy  $target > /dev/null 2>&1 || true
+    virsh undefine $target --snapshots-metadata > /dev/null 2>&1 || true
+
+    if [ $PHD_VAR_deployment = collapsed ]; then
+        case $section in 
+       	    node) ;;
+            *) 
+	         # We don't need any of the other instances
+		 # Its good to get rid of any old copies that might exist though
+	         continue;;
+        esac
+    fi
+
+    cp template.xml ${target}.xml
+
+    sed -i.sed s#VM_NAME#${target}#g ${target}.xml
+    sed -i.sed s#EXTERNAL_MAC#${PHD_VAR_network_nic_base}:0${lastoct}:00:${octet}#g ${target}.xml
+    sed -i.sed s#INTERNAL_MAC#${PHD_VAR_network_nic_base}:0${lastoct}:01:${octet}#g ${target}.xml
+    sed -i.sed s:source\ file.*\/:source\ file=\'/localvms/${target}.cow\'\/:g ${target}.xml
+    diff -u template.xml ${target}.xml || true
+
+    rm -f /localvms/${target}.cow /localvms/${target}-*.cow
+    qemu-img create -b /localvms/${PHD_VAR_vm_base} -f qcow2 /localvms/${target}.cow
+
+    virsh define ${target}.xml
+    virsh start ${target}
+
+    rm -f ${target}.xml.sed ${target}.xml
+done
+
+....

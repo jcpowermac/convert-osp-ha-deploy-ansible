@@ -1,0 +1,96 @@
+# This file can be used directly by 'phd', see 'build-all.sh' in this
+# directory for how it can be invoked.  The only requirement is a list
+# of nodes you'd like it to modify.
+#
+# The scope of each command-block is controlled by the preceeding
+# 'target' line. 
+#
+# - target=all
+#   The commands are executed on evey node provided
+#
+# - target=local
+#   The commands are executed from the node hosting phd. When not
+#   using phd, they should be run from some other independant host
+#   (such as the puppet master)
+#
+# - target=$PHD_ENV_nodes{N}
+#   The commands are executed on the Nth node provided.
+#   For example, to run on only the first node would be target=$PHD_ENV_nodes1
+#
+# Tasks to be performed at this step include:
+
+#################################
+# Scenario Requirements Section #
+#################################
+= REQUIREMENTS =
+nodes: 1
+
+= VARIABLES =
+
+PHD_VAR_deployment
+PHD_VAR_network_hosts_memcache
+PHD_VAR_network_hosts_rabbitmq
+
+######################
+# Deployment Scripts #
+######################
+= SCRIPTS =
+
+target=all
+....
+yum install -y openstack-heat-engine openstack-heat-api openstack-heat-api-cfn openstack-heat-api-cloudwatch python-heatclient openstack-utils python-glanceclient
+
+openstack-config --set /etc/heat/heat.conf database connection mysql://heat:heattest@vip-db/heat
+openstack-config --set /etc/heat/heat.conf database database max_retries -1
+
+openstack-config --set /etc/heat/heat.conf keystone_authtoken admin_tenant_name services
+openstack-config --set /etc/heat/heat.conf keystone_authtoken admin_user heat
+openstack-config --set /etc/heat/heat.conf keystone_authtoken admin_password heattest
+openstack-config --set /etc/heat/heat.conf keystone_authtoken service_host vip-keystone
+openstack-config --set /etc/heat/heat.conf keystone_authtoken auth_host vip-keystone
+openstack-config --set /etc/heat/heat.conf keystone_authtoken auth_uri http://vip-keystone:35357/v2.0
+openstack-config --set /etc/heat/heat.conf keystone_authtoken keystone_ec2_uri http://vip-keystone:35357/v2.0
+openstack-config --set /etc/heat/heat.conf ec2authtoken auth_uri http://vip-keystone:5000/v2.0
+
+openstack-config --set /etc/heat/heat.conf DEFAULT memcache_servers   ${PHD_VAR_network_hosts_memcache}
+openstack-config --set /etc/heat/heat.conf oslo_messaging_rabbit rabbit_hosts ${PHD_VAR_network_hosts_rabbitmq}
+openstack-config --set /etc/heat/heat.conf oslo_messaging_rabbit rabbit_ha_queues true
+
+
+openstack-config --set /etc/heat/heat.conf heat_api bind_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+openstack-config --set /etc/heat/heat.conf heat_api_cfn bind_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+openstack-config --set /etc/heat/heat.conf heat_api_cloudwatch bind_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+openstack-config --set /etc/heat/heat.conf DEFAULT heat_metadata_server_url vip-heat:8000
+openstack-config --set /etc/heat/heat.conf DEFAULT heat_waitcondition_server_url vip-heat:8000/v1/waitcondition
+openstack-config --set /etc/heat/heat.conf DEFAULT heat_watch_server_url vip-heat:8003
+
+openstack-config --set /etc/heat/heat.conf DEFAULT rpc_backend heat.openstack.common.rpc.impl_kombu
+
+openstack-config --set /etc/heat/heat.conf DEFAULT notification_driver heat.openstack.common.notifier.rpc_notifier
+
+# disable CWLiteAlarm that is incompatible with A/A
+openstack-config --set /etc/heat/heat.conf DEFAULT enable_cloud_watch_lite false
+
+....
+
+target=$PHD_ENV_nodes1
+....
+su heat -s /bin/sh -c "heat-manage db_sync"
+
+pcs resource create heat-api systemd:openstack-heat-api --clone interleave=true
+pcs resource create heat-api-cfn systemd:openstack-heat-api-cfn  --clone interleave=true
+pcs resource create heat-api-cloudwatch systemd:openstack-heat-api-cloudwatch --clone interleave=true
+pcs resource create heat-engine systemd:openstack-heat-engine --clone interleave=true
+
+pcs constraint order start heat-api-clone then heat-api-cfn-clone
+pcs constraint colocation add heat-api-cfn-clone with heat-api-clone
+pcs constraint order start heat-api-cfn-clone then heat-api-cloudwatch-clone
+pcs constraint colocation add heat-api-cloudwatch-clone with heat-api-cfn-clone
+pcs constraint order start heat-api-cloudwatch-clone then heat-engine-clone
+pcs constraint colocation add heat-engine-clone with heat-api-cloudwatch-clone
+
+if [ $PHD_VAR_deployment = collapsed ]; then
+    pcs constraint order start ceilometer-notification-clone then heat-api-clone
+fi
+....
+

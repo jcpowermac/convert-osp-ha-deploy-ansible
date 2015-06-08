@@ -1,0 +1,154 @@
+# This file can be used directly by 'phd', see 'build-all.sh' in this
+# directory for how it can be invoked.  The only requirement is a list
+# of nodes you'd like it to modify.
+#
+# The scope of each command-block is controlled by the preceeding
+# 'target' line. 
+#
+# - target=all
+#   The commands are executed on evey node provided
+#
+# - target=local
+#   The commands are executed from the node hosting phd. When not
+#   using phd, they should be run from some other independant host
+#   (such as the puppet master)
+#
+# - target=$PHD_ENV_nodes{N}
+#   The commands are executed on the Nth node provided.
+#   For example, to run on only the first node would be target=$PHD_ENV_nodes1
+#
+# Tasks to be performed at this step include:
+# - installing the cluster software
+# - enabling the pcs daemon to allow remote management
+# - setting a password for the hacluster user for use with pcs
+# - authenticating to pcs on the other hosts with the hacluster user and password
+# - creating and starting the cluster
+# - configuring fencing using the multicast addresses specified for fence_virt on the bare metal hosts 
+
+#################################
+# Scenario Requirements Section #
+#################################
+
+= VARIABLES =
+
+PHD_VAR_env_password
+PHD_VAR_network_clock
+PHD_VAR_network_internal
+PHD_VAR_secrets_fence_xvm
+
+#################################
+# Scenario Requirements Section #
+#################################
+= REQUIREMENTS =
+nodes: 1
+
+######################
+# Deployment Scripts #
+######################
+= SCRIPTS =
+
+target=all
+....
+
+yum install -y http://rhos-release.virt.bos.redhat.com/repos/rhos-release/rhos-release-latest.noarch.rpm
+
+rhos-release 7
+
+yum update -y
+
+# install the packages
+yum install -y pcs pacemaker corosync fence-agents-all resource-agents nfs-utils ntp ntpdate
+
+# enable pcsd
+systemctl enable pcsd
+systemctl start pcsd
+
+systemctl disable firewalld
+systemctl stop firewalld
+
+# The cluster shouldn't need NTP configured, but without it the
+# network goes bye-bye when using DHCP
+#
+# Must point to clock.redhat.com to work internally
+sed -i s/^server.*// /etc/ntp.conf
+echo "server $PHD_VAR_network_clock iburst" >> /etc/ntp.conf
+echo $PHD_VAR_network_clock > /etc/ntp/step-tickers
+
+#sync_to_hardware clock
+echo "SYNC_HWCLOCK=yes" >> /etc/sysconfig/ntpdate
+
+systemctl enable ntpdate
+systemctl start ntpdate
+
+systemctl enable ntpd
+systemctl start ntpd
+
+# set a password for hacluster user. password should be the same on all nodes
+echo ${PHD_VAR_env_password} | passwd --stdin hacluster
+
+
+# Unfortunately https://bugzilla.redhat.com/show_bug.cgi?id=1175005
+# prevents NFS mounts from succeeding by default prior to a reboot
+
+systemctl daemon-reload
+systemctl start rpcbind.service
+systemctl start rpc-statd.service
+
+# Now mount /srv so that we can use $PHD_VAR_osp_configdir further down
+
+if grep -q srv /etc/fstab; then 
+    echo /srv is already mounted; 
+else
+    mkdir -p /srv
+    echo "${PHD_VAR_network_internal}.1:/srv       /srv                    nfs     defaults,v3     0 0" >> /etc/fstab
+    mount /srv
+fi
+
+# Set up the authkey
+mkdir -p /etc/cluster
+echo ${PHD_VAR_secrets_fence_xvm} > /etc/cluster/fence_xvm.key
+
+....
+
+target=$PHD_ENV_nodes1
+....
+short_nodes=""
+for node in $PHD_ENV_nodes; do
+    short_nodes="${short_nodes} $(echo ${node} | sed s/\\..*//g)"
+done
+
+# autheticate nodes, requires all nodes to have pcsd up and running 
+# the -p option is used to give the password on command line and make it easier to script
+pcs cluster auth $short_nodes -u hacluster -p ${PHD_VAR_env_password} --force
+
+# Construct and start the cluster
+# The cluster needs a unique name, base it on the first node's name
+pcs cluster setup --force --name $(echo $PHD_ENV_nodes1 | sed -e s/[0-9]//g -e s/\\..*//g )  ${short_nodes}
+pcs cluster enable --all
+pcs cluster start --all
+
+# Give the cluster a moment to come up
+sleep 5
+
+# Assumes bare metal nodes are:
+# - named with a trailing offset
+# - numbered sequentially
+# - the first node is a proxy
+# - total of three nodes
+# - are configured with fence-virtd (see virt-hosts.scenario)
+# 
+# If any of the above is not true, change the fencing devices below
+
+pcs stonith create fence1 fence_xvm multicast_address=225.0.0.2
+pcs stonith create fence2 fence_xvm multicast_address=225.0.0.3
+pcs stonith create fence3 fence_xvm multicast_address=225.0.0.4
+
+# For clones this is not so important
+#
+# However we really don't wan't VIPs moving around as it can cause
+# fencing to fail (eg. if vip-db is stopped, then keystone won't
+# function and we can't confirm if nova recognized the compute node is
+# down)
+pcs resource defaults resource-stickiness=INFINITY
+
+....

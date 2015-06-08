@@ -1,0 +1,117 @@
+# This file can be used directly by 'phd', see 'build-all.sh' in this
+# directory for how it can be invoked.  The only requirement is a list
+# of nodes you'd like it to modify.
+#
+# The scope of each command-block is controlled by the preceeding
+# 'target' line. 
+#
+# - target=all
+#   The commands are executed on evey node provided
+#
+# - target=local
+#   The commands are executed from the node hosting phd. When not
+#   using phd, they should be run from some other independant host
+#   (such as the puppet master)
+#
+# - target=$PHD_ENV_nodes{N}
+#   The commands are executed on the Nth node provided.
+#   For example, to run on only the first node would be target=$PHD_ENV_nodes1
+#
+# Tasks to be performed at this step include:
+
+#################################
+# Scenario Requirements Section #
+#################################
+= REQUIREMENTS =
+nodes: 1
+
+= VARIABLES =
+
+PHD_VAR_deployment
+PHD_VAR_network_domain
+PHD_VAR_network_hosts_memcache
+PHD_VAR_network_hosts_rabbitmq
+PHD_VAR_network_internal
+
+######################
+# Deployment Scripts #
+######################
+= SCRIPTS =
+
+target=all
+....
+yum install -y openstack-nova-console openstack-nova-novncproxy openstack-utils openstack-nova-api openstack-nova-conductor openstack-nova-scheduler python-cinderclient python-memcached
+
+openstack-config --set /etc/nova/nova.conf oslo_messaging_rabbit rabbit_hosts ${PHD_VAR_network_hosts_rabbitmq}
+openstack-config --set /etc/nova/nova.conf oslo_messaging_rabbit rabbit_ha_queues true
+openstack-config --set /etc/nova/nova.conf DEFAULT memcached_servers ${PHD_VAR_network_hosts_memcache}
+
+
+
+# Particularly in the collapsed case, we get a lot of conflicts with the haproxy server
+openstack-config --set /etc/nova/nova.conf DEFAULT vncserver_proxyclient_address $(host $(hostname -s) | awk '{print $4}')
+openstack-config --set /etc/nova/nova.conf DEFAULT vncserver_listen $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+openstack-config --set /etc/nova/nova.conf DEFAULT vncserver_proxyclient_address $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+openstack-config --set /etc/nova/nova.conf DEFAULT novncproxy_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+openstack-config --set /etc/nova/nova.conf DEFAULT metadata_listen $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+openstack-config --set /etc/nova/nova.conf DEFAULT osapi_compute_listen $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+
+openstack-config --set /etc/nova/nova.conf DEFAULT novncproxy_base_url http://${PHD_VAR_network_hosts_gateway}.${PHD_VAR_network_domain}:6080/vnc_auto.html
+
+openstack-config --set /etc/nova/nova.conf DEFAULT auth_strategy keystone
+# FIX ME: nova doesn't like hostnames anymore?
+# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_host vip-nova
+openstack-config --set /etc/nova/nova.conf DEFAULT metadata_host ${PHD_VAR_network_internal}.210
+openstack-config --set /etc/nova/nova.conf DEFAULT metadata_listen_port 8775
+
+openstack-config --set /etc/nova/nova.conf neutron service_metadata_proxy True
+openstack-config --set /etc/nova/nova.conf neutron metadata_proxy_shared_secret metatest
+openstack-config --set /etc/nova/nova.conf glance host vip-glance
+openstack-config --set /etc/nova/nova.conf DEFAULT network_api_class nova.network.neutronv2.api.API
+openstack-config --set /etc/nova/nova.conf neutron url http://vip-neutron:9696/
+openstack-config --set /etc/nova/nova.conf neutron admin_tenant_name services
+openstack-config --set /etc/nova/nova.conf neutron admin_username neutron
+openstack-config --set /etc/nova/nova.conf neutron admin_password neutrontest
+openstack-config --set /etc/nova/nova.conf neutron admin_auth_url http://vip-keystone:35357/v2.0
+openstack-config --set /etc/nova/nova.conf DEFAULT firewall_driver nova.virt.firewall.NoopFirewallDriver
+openstack-config --set /etc/nova/nova.conf DEFAULT libvirt_vif_driver nova.virt.libvirt.vif.LibvirtHybridOVSBridgeDriver
+
+openstack-config --set /etc/nova/nova.conf conductor use_local false
+
+openstack-config --set /etc/nova/nova.conf database connection mysql://nova:novatest@vip-db/nova
+openstack-config --set /etc/nova/nova.conf database max_retries -1
+
+# REQUIRED FOR A/A scheduler
+openstack-config --set /etc/nova/nova.conf DEFAULT scheduler_host_subset_size 30
+openstack-config --set /etc/nova/api-paste.ini filter:authtoken auth_host vip-keystone
+openstack-config --set /etc/nova/api-paste.ini filter:authtoken admin_tenant_name services
+openstack-config --set /etc/nova/api-paste.ini filter:authtoken admin_user compute
+openstack-config --set /etc/nova/api-paste.ini filter:authtoken admin_password novatest
+....
+
+target=$PHD_ENV_nodes1
+....
+su nova -s /bin/sh -c "nova-manage db sync"
+
+pcs resource create nova-consoleauth systemd:openstack-nova-consoleauth  op monitor start-delay=10s --clone
+pcs resource create nova-novncproxy systemd:openstack-nova-novncproxy op monitor start-delay=10s --clone
+pcs resource create nova-api systemd:openstack-nova-api op monitor start-delay=10s --clone
+pcs resource create nova-scheduler systemd:openstack-nova-scheduler op monitor start-delay=10s --clone
+pcs resource create nova-conductor systemd:openstack-nova-conductor op monitor start-delay=10s --clone
+
+pcs constraint order start nova-consoleauth-clone then nova-novncproxy-clone
+pcs constraint colocation add nova-novncproxy-clone with nova-consoleauth-clone
+
+pcs constraint order start nova-novncproxy-clone then nova-api-clone
+pcs constraint colocation add nova-api-clone with nova-novncproxy-clone
+
+pcs constraint order start nova-api-clone then nova-scheduler-clone
+pcs constraint colocation add nova-scheduler-clone with nova-api-clone
+
+pcs constraint order start nova-scheduler-clone then nova-conductor-clone
+pcs constraint colocation add nova-conductor-clone with nova-scheduler-clone
+
+if [ $PHD_VAR_deployment = collapsed ]; then
+    pcs constraint order start keystone-clone then nova-consoleauth-clone
+fi
+....

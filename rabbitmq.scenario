@@ -1,0 +1,72 @@
+# This file can be used directly by 'phd', see 'build-all.sh' in this
+# directory for how it can be invoked.  The only requirement is a list
+# of nodes you'd like it to modify.
+#
+# The scope of each command-block is controlled by the preceeding
+# 'target' line. 
+#
+# - target=all
+#   The commands are executed on evey node provided
+#
+# - target=local
+#   The commands are executed from the node hosting phd. When not
+#   using phd, they should be run from some other independant host
+#   (such as the puppet master)
+#
+# - target=$PHD_ENV_nodes{N}
+#   The commands are executed on the Nth node provided.
+#   For example, to run on only the first node would be target=$PHD_ENV_nodes1
+#
+# Tasks to be performed at this step include:
+
+#################################
+# Scenario Requirements Section #
+#################################
+= VARIABLES =
+
+PHD_VAR_deployment
+PHD_VAR_osp_configdir
+PHD_VAR_network_domain
+PHD_VAR_network_internal
+
+#################################
+# Scenario Requirements Section #
+#################################
+= REQUIREMENTS =
+nodes: 1
+
+######################
+# Deployment Scripts #
+######################
+= SCRIPTS =
+
+target=all
+....
+yum install -y rabbitmq-server 
+
+# NOTE: we need to bind the service to the internal IP address
+
+cat > /etc/rabbitmq/rabbitmq-env.conf << EOF
+NODE_IP_ADDRESS=$(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+EOF
+
+# required to generate the cookies
+systemctl start rabbitmq-server
+systemctl stop rabbitmq-server
+
+mkdir -p $PHD_VAR_osp_configdir
+if [ ! -e $PHD_VAR_osp_configdir/rabbitmq_erlang_cookie ]; then
+    cp /var/lib/rabbitmq/.erlang.cookie $PHD_VAR_osp_configdir/rabbitmq_erlang_cookie
+fi
+
+# the cookie has to be the same across all nodes. Copy around as preferred, I am 
+# using my NFS commodity storage. Also check for file permission/ownership. I 
+# workaround that step by using 'cat' vs cp.
+cat $PHD_VAR_osp_configdir/rabbitmq_erlang_cookie > /var/lib/rabbitmq/.erlang.cookie
+....
+
+
+target=$PHD_ENV_nodes1
+....
+pcs resource create rabbitmq-server rabbitmq-cluster set_policy='HA ^(?!amq\.).* {"ha-mode":"all"}' --clone ordered=true interleave=true
+....

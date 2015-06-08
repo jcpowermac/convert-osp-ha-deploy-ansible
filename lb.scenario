@@ -1,0 +1,250 @@
+# This file can be used directly by 'phd', see 'build-all.sh' in this
+# directory for how it can be invoked.  The only requirement is a list
+# of nodes you'd like it to modify.
+#
+# The scope of each command-block is controlled by the preceeding
+# 'target' line. 
+#
+# - target=all
+#   The commands are executed on evey node provided
+#
+# - target=local
+#   The commands are executed from the node hosting phd. When not
+#   using phd, they should be run from some other independant host
+#   (such as the puppet master)
+#
+# - target=$PHD_ENV_nodes{N}
+#   The commands are executed on the Nth node provided.
+#   For example, to run on only the first node would be target=$PHD_ENV_nodes1
+#
+# Tasks to be performed at this step include:
+# - Tweaking the IP stack to allow nonlocal binding and adjusting keepalive timings
+# - Configuring haproxy
+# - Adding the virtual IPs to the cluster
+# - Putting haproxy under the cluster's control
+
+#################################
+# Scenario Requirements Section #
+#################################
+= VARIABLES =
+
+PHD_VAR_network_internal
+PHD_VAR_deployment
+PHD_VAR_components
+PHD_VAR_osp_major
+
+#################################
+# Scenario Requirements Section #
+#################################
+= REQUIREMENTS =
+nodes: 1
+
+######################
+# Deployment Scripts #
+######################
+= SCRIPTS =
+
+target=all
+....
+yum install -y haproxy
+echo net.ipv4.ip_nonlocal_bind=1 >> /etc/sysctl.d/haproxy.conf
+echo 1 > /proc/sys/net/ipv4/ip_nonlocal_bind
+# the keepalive settings must be set in *ALL* hosts interacting with rabbitmq.
+cat >/etc/sysctl.d/tcp_keepalive.conf << EOF
+net.ipv4.tcp_keepalive_intvl = 1
+net.ipv4.tcp_keepalive_probes = 5
+net.ipv4.tcp_keepalive_time = 5
+EOF
+sysctl net.ipv4.tcp_keepalive_intvl=1
+sysctl net.ipv4.tcp_keepalive_probes=5
+sysctl net.ipv4.tcp_keepalive_time=5
+
+# HA Proxy defaults
+
+cat > /etc/haproxy/haproxy.cfg << EOF
+global
+    daemon
+defaults
+    mode tcp
+    maxconn 10000
+    timeout  connect 10s
+    timeout  client 1m
+    timeout  server 1m
+    timeout  check 10s
+EOF
+
+# Special case front-ends
+
+cat >> /etc/haproxy/haproxy.cfg << EOF
+frontend vip-db
+    bind ${PHD_VAR_network_internal}.201:3306
+    timeout client 90m
+    default_backend db-vms-galera
+
+frontend vip-qpid
+    bind ${PHD_VAR_network_internal}.215:5672
+    timeout client 120s
+    default_backend qpid-vms
+
+frontend vip-horizon
+    bind ${PHD_VAR_network_internal}.211:80
+    timeout client 180s
+    cookie SERVERID insert indirect nocache
+    default_backend horizon-vms
+
+frontend vip-ceilometer
+    bind ${PHD_VAR_network_internal}.214:8777
+    timeout client 90s
+    default_backend ceilometer-vms
+
+frontend vip-rabbitmq
+    option clitcpka
+    bind ${PHD_VAR_network_internal}.202:5672
+    timeout client 900m
+    default_backend rabbitmq-vms
+EOF
+
+# nova-metadata needs "balance roundrobin" for frontend?
+#db-vms-mariadb:58:3306:90s
+
+mappings="
+keystone-admin:203:64:35357
+keystone-public:203:64:5000
+glance-api:205:70:9191
+glance-registry:205:70:9292
+cinder:206:73:8776
+swift:208:79:8080
+neutron:209:82:9696
+nova-vnc-novncproxy:210:85:6080
+nova-vnc-xvpvncproxy:210:85:6081
+nova-metadata:210:85:8775
+nova-api:210:85:8774
+horizon:x:85:80:108s
+heat-cfn:212:91:8000
+heat-cloudw:212:91:8004
+heat-srv:212:91:8004
+ceilometer:x:97:8777
+"
+
+for mapping in $mappings; do 
+    server=$(echo $mapping | awk -F: '{print $1}' | awk -F- '{print $1}')
+    service=$(echo $mapping | awk -F: '{print $1}')
+    src=$(echo $mapping | awk -F: '{print $2}')
+    target=$(echo $mapping | awk -F: '{print $3}')
+    port=$(echo $mapping | awk -F: '{print $4}')
+    timeout=$(echo $mapping | awk -F: '{print $5}')
+
+    echo "Creating mapping for ${server} ${service}"
+
+    if [ ${src} != x ]; then
+	echo "frontend vip-${service}" >> /etc/haproxy/haproxy.cfg
+	echo "    bind ${PHD_VAR_network_internal}.${src}:${port}" >> /etc/haproxy/haproxy.cfg
+	echo "    default_backend ${service}-vms" >> /etc/haproxy/haproxy.cfg
+    fi
+
+    echo "backend ${service}-vms" >> /etc/haproxy/haproxy.cfg
+    echo "    balance roundrobin" >> /etc/haproxy/haproxy.cfg
+    if [ ! -z $timeout ]; then
+	echo "    timeout server ${timeout}" >> /etc/haproxy/haproxy.cfg
+    fi
+    for count in 1 2 3; do
+	echo "    server rdo${PHD_VAR_osp_major}-${server}${count} ${PHD_VAR_network_internal}.$(( ${target} + ${count} - 1)):${port} check inter 1s" >> /etc/haproxy/haproxy.cfg
+    done
+done
+
+# Special case back-ends
+
+cat >> /etc/haproxy/haproxy.cfg << EOF
+backend qpid-vms
+# comment out 'stick-table' and add 'balance roundrobin' for A/A cluster mode in qpid
+    stick-table type ip size 2
+    stick on dst
+    timeout server 120s
+    server rdo${PHD_VAR_osp_major}-qpid1 ${PHD_VAR_network_internal}.103:5672 check inter 1s
+    server rdo${PHD_VAR_osp_major}-qpid2 ${PHD_VAR_network_internal}.104:5672 check inter 1s
+    server rdo${PHD_VAR_osp_major}-qpid3 ${PHD_VAR_network_internal}.105:5672 check inter 1s
+
+backend db-vms-galera
+    option httpchk
+    option tcpka
+    stick-table type ip size 1000
+    stick on dst
+    timeout server 90m
+    server rdo${PHD_VAR_osp_major}-db1 ${PHD_VAR_network_internal}.58:3306 check inter 1s port 9200 backup on-marked-down shutdown-sessions
+    server rdo${PHD_VAR_osp_major}-db2 ${PHD_VAR_network_internal}.59:3306 check inter 1s port 9200 backup on-marked-down shutdown-sessions
+    server rdo${PHD_VAR_osp_major}-db3 ${PHD_VAR_network_internal}.60:3306 check inter 1s port 9200 backup on-marked-down shutdown-sessions
+
+backend rabbitmq-vms
+    option srvtcpka
+    balance roundrobin
+    timeout server 900m
+    server rdo${PHD_VAR_osp_major}-rabbitmq1 ${PHD_VAR_network_internal}.61:5672 check inter 1s
+    server rdo${PHD_VAR_osp_major}-rabbitmq2 ${PHD_VAR_network_internal}.62:5672 check inter 1s
+    server rdo${PHD_VAR_osp_major}-rabbitmq3 ${PHD_VAR_network_internal}.63:5672 check inter 1s
+EOF
+
+if [ $PHD_VAR_deployment = collapsed ]; then
+    # In a collapsed environment everything is installed on rdo${PHD_VAR_osp_major}-node{1,2,3}
+    # So rewite the proxy config to talk to those hosts instead
+    for section in ${PHD_VAR_components}; do
+    	sed -i s/rdo${PHD_VAR_osp_major}-${section}1\ ${PHD_VAR_network_internal}.[0-9]*/rdo${PHD_VAR_osp_major}-node1\ ${PHD_VAR_network_internal}\.103/g /etc/haproxy/haproxy.cfg
+    	sed -i s/rdo${PHD_VAR_osp_major}-${section}2\ ${PHD_VAR_network_internal}.[0-9]*/rdo${PHD_VAR_osp_major}-node2\ ${PHD_VAR_network_internal}\.104/g /etc/haproxy/haproxy.cfg
+    	sed -i s/rdo${PHD_VAR_osp_major}-${section}3\ ${PHD_VAR_network_internal}.[0-9]*/rdo${PHD_VAR_osp_major}-node3\ ${PHD_VAR_network_internal}\.105/g /etc/haproxy/haproxy.cfg
+    done
+fi
+....
+
+target=$PHD_ENV_nodes1
+....
+pcs resource create lb-haproxy systemd:haproxy op monitor start-delay=10s --clone
+
+
+# The VIPs changed recently 
+####
+# db         was 192.168.16.200 -> 201
+# rabbitmq   was 192.168.16.213 -> 202
+# qpid       was 192.168.16.201 -> 215
+# keystone   was 192.168.16.202 -> 203
+# glance     was 192.168.16.203 -> 205
+# cinder     was 192.168.16.204 -> 206
+# swift      was 192.168.16.205 -> 208
+# neutron    was 192.168.16.206 -> 209
+# nova       was 192.168.16.207 -> 210
+# horizon    was 192.168.16.208 -> 211
+# heat       was 192.168.16.209 -> 212
+# ceilometer was 192.168.16.211 -> 214
+####
+
+offset=200
+for section in ${PHD_VAR_components}; do
+    case $section in 
+	lb|memcache|swift-brick|mongodb)
+	    : No VIP needed for $section
+	    ;;
+	*)
+	    pcs resource create vip-${section} IPaddr2 ip=${PHD_VAR_network_internal}.${offset} nic=eth1
+	    ;;
+    esac
+    offset=$(( $offset + 1 ))
+done
+
+
+if [ $PHD_VAR_deployment = collapsed ]; then
+
+    # In a collapsed environment, we can instruct the cluster to start
+    # things in a particular order and require services to be active
+    # on the same hosts.  We do this with constraints.
+
+    for section in ${PHD_VAR_components}; do
+	case $section in 
+	    lb|memcache|swift-brick|mongodb)
+		: No VIP constraints needed for $section
+		;;
+	    *)
+		pcs constraint order start vip-${section} then lb-haproxy-clone kind=Optional
+    		pcs constraint colocation add vip-${section} with lb-haproxy-clone
+		;;
+	esac
+    done
+fi
+....

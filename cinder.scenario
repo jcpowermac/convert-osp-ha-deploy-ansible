@@ -1,0 +1,120 @@
+# This file can be used directly by 'phd', see 'build-all.sh' in this
+# directory for how it can be invoked.  The only requirement is a list
+# of nodes you'd like it to modify.
+#
+# The scope of each command-block is controlled by the preceeding
+# 'target' line. 
+#
+# - target=all
+#   The commands are executed on evey node provided
+#
+# - target=local
+#   The commands are executed from the node hosting phd. When not
+#   using phd, they should be run from some other independant host
+#   (such as the puppet master)
+#
+# - target=$PHD_ENV_nodes{N}
+#   The commands are executed on the Nth node provided.
+#   For example, to run on only the first node would be target=$PHD_ENV_nodes1
+#
+# Tasks to be performed at this step include:
+
+#################################
+# Scenario Requirements Section #
+#################################
+= VARIABLES =
+
+PHD_VAR_deployment
+PHD_VAR_osp_major
+PHD_VAR_osp_configdir
+PHD_VAR_network_internal
+PHD_VAR_network_hosts_memcache
+PHD_VAR_network_hosts_rabbitmq
+
+#################################
+# Scenario Requirements Section #
+#################################
+= REQUIREMENTS =
+nodes: 1
+
+######################
+# Deployment Scripts #
+######################
+= SCRIPTS =
+
+target=all
+....
+yum install -y openstack-cinder openstack-utils python-memcached python-keystonemiddleware python-openstackclient
+
+# Pending ack from cinder team
+#openstack-config --set /etc/cinder/cinder.conf DEFAULT enable_v1_api false
+#openstack-config --set /etc/cinder/cinder.conf DEFAULT enable_v2_api true
+
+openstack-config --set /etc/cinder/cinder.conf database connection mysql://cinder:cindertest@vip-db/cinder
+openstack-config --set /etc/cinder/cinder.conf database max_retries -1
+
+openstack-config --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken identity_uri http://vip-keystone:35357/
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken auth_uri http://vip-keystone:5000/
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken admin_tenant_name services
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken admin_user cinder
+openstack-config --set /etc/cinder/cinder.conf keystone_authtoken admin_password cindertest
+
+openstack-config --set /etc/cinder/cinder.conf DEFAULT notification_driver messaging
+openstack-config --set /etc/cinder/cinder.conf DEFAULT control_exchange cinder
+
+openstack-config --set /etc/cinder/cinder.conf DEFAULT glance_host vip-glance
+
+openstack-config --set /etc/cinder/cinder.conf DEFAULT memcache_servers  ${PHD_VAR_network_hosts_memcache}
+
+openstack-config --set /etc/cinder/cinder.conf oslo_messaging_rabbit rabbit_hosts ${PHD_VAR_network_hosts_rabbitmq}
+openstack-config --set /etc/cinder/cinder.conf oslo_messaging_rabbit rabbit_ha_queues true
+
+# rdo${PHD_VAR_osp_major}-cinder isn't the name of a real host or an IP
+# Its the name which we should advertise ourselves as and for A/P it should be the same everywhere
+openstack-config --set /etc/cinder/cinder.conf DEFAULT host rdo${PHD_VAR_osp_major}-cinder
+openstack-config --set /etc/cinder/cinder.conf DEFAULT osapi_volume_listen $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+openstack-config --set /etc/cinder/cinder.conf DEFAULT nfs_shares_config /etc/cinder/nfs_exports
+openstack-config --set /etc/cinder/cinder.conf DEFAULT nfs_sparsed_volumes true
+openstack-config --set /etc/cinder/cinder.conf DEFAULT nfs_mount_options v3
+
+openstack-config --set /etc/cinder/cinder.conf DEFAULT volume_driver cinder.volume.drivers.nfs.NfsDriver
+
+# NOTE: this config section is to enable and configure the NFS cinder driver.
+
+# Create the directory on the server
+mkdir -p $PHD_VAR_osp_configdir/cinder
+
+chown -R cinder:cinder $PHD_VAR_osp_configdir/cinder
+
+cat > /etc/cinder/nfs_exports << EOF
+${PHD_VAR_network_internal}.1:$PHD_VAR_osp_configdir/cinder
+EOF
+
+chown root:cinder /etc/cinder/nfs_exports
+chmod 0640 /etc/cinder/nfs_exports
+
+....
+
+
+target=$PHD_ENV_nodes1
+....
+su cinder -s /bin/sh -c "cinder-manage db sync"
+
+# create services in pacemaker
+pcs resource create cinder-api systemd:openstack-cinder-api --clone interleave=true
+pcs resource create cinder-scheduler systemd:openstack-cinder-scheduler --clone interleave=true
+
+# Volume must be A/P for now. See https://bugzilla.redhat.com/show_bug.cgi?id=1193229
+pcs resource create cinder-volume systemd:openstack-cinder-volume
+
+pcs constraint order start cinder-api-clone then cinder-scheduler-clone
+pcs constraint colocation add cinder-scheduler-clone with cinder-api-clone
+pcs constraint order start cinder-scheduler-clone then cinder-volume
+pcs constraint colocation add cinder-volume with cinder-scheduler-clone
+
+if [ $PHD_VAR_deployment = collapsed ]; then
+    pcs constraint order start keystone-clone then cinder-api-clone
+fi
+....
+

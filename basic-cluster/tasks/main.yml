@@ -1,18 +1,20 @@
 ---
 
-name: Install software
-yum: name={{ item }} state=present
-with_items:
+- name: Install software
+  yum: name={{ item }} state=present
+  with_items:
 - http://rhos-release.virt.bos.redhat.com/repos/rhos-release/rhos-release-latest.noarch.rpm
 
-name: Install software
-yum: name={{ item }} state=present
-with_items:
+
+- name: Install software
+  yum: name={{ item }} state=present
+  with_items:
 - update
 
-name: Install software
-yum: name={{ item }} state=present
-with_items:
+
+- name: Install software
+  yum: name={{ item }} state=present
+  with_items:
 - pcs
 - pacemaker
 - corosync
@@ -21,3 +23,12 @@ with_items:
 - nfs-utils
 - ntp
 - ntpdate
+
+- name: systemctl enable pcsd
+  service: name=enable enabled=yes state=started
+- name: systemctl disable firewalld
+  service: name=disable enabled=no state=stopped
+- name: systemctl enable ntpdate
+  service: name=enable enabled=yes state=started
+- name: systemctl enable ntpd
+  service: name=enable enabled=yes state=started

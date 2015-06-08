@@ -1,13 +1,17 @@
 ---
 
-name: Install software
-yum: name={{ item }} state=present
-with_items:
+- name: Install software
+  yum: name={{ item }} state=present
+  with_items:
 - fence-virtd
 - fence-virtd-multicast
 - fence-virtd-libvirt
 
-name: Install software
-yum: name={{ item }} state=present
-with_items:
+- name: systemctl enable fence_virtd
+  service: name=enable enabled=yes state=started
+
+- name: Install software
+  yum: name={{ item }} state=present
+  with_items:
 []
+

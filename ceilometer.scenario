@@ -1,0 +1,109 @@
+# This file can be used directly by 'phd', see 'build-all.sh' in this
+# directory for how it can be invoked.  The only requirement is a list
+# of nodes you'd like it to modify.
+#
+# The scope of each command-block is controlled by the preceeding
+# 'target' line. 
+#
+# - target=all
+#   The commands are executed on evey node provided
+#
+# - target=local
+#   The commands are executed from the node hosting phd. When not
+#   using phd, they should be run from some other independant host
+#   (such as the puppet master)
+#
+# - target=$PHD_ENV_nodes{N}
+#   The commands are executed on the Nth node provided.
+#   For example, to run on only the first node would be target=$PHD_ENV_nodes1
+#
+# Tasks to be performed at this step include:
+
+#################################
+# Scenario Requirements Section #
+#################################
+= REQUIREMENTS =
+nodes: 1
+
+= VARIABLES =
+
+PHD_VAR_deployment
+PHD_VAR_network_hosts_memcache
+PHD_VAR_network_hosts_mongodb
+PHD_VAR_network_hosts_rabbitmq
+PHD_VAR_network_internal
+
+######################
+# Deployment Scripts #
+######################
+= SCRIPTS =
+
+target=all
+....
+yum install -y openstack-ceilometer-api openstack-ceilometer-central openstack-ceilometer-collector openstack-ceilometer-common openstack-ceilometer-alarm python-ceilometer python-ceilometerclient redis
+
+# have redis listen on all IPs
+sed -i "s/\s*bind \(.*\)$/#bind \1/" /etc/redis.conf
+
+openstack-config --set /etc/ceilometer/ceilometer.conf keystone_authtoken auth_host vip-keystone
+openstack-config --set /etc/ceilometer/ceilometer.conf keystone_authtoken auth_port 35357
+openstack-config --set /etc/ceilometer/ceilometer.conf keystone_authtoken auth_protocol http
+openstack-config --set /etc/ceilometer/ceilometer.conf keystone_authtoken admin_tenant_name services
+openstack-config --set /etc/ceilometer/ceilometer.conf keystone_authtoken admin_user ceilometer
+openstack-config --set /etc/ceilometer/ceilometer.conf keystone_authtoken admin_password ceilometertest
+
+openstack-config --set /etc/ceilometer/ceilometer.conf DEFAULT memcache_servers  ${PHD_VAR_network_hosts_memcache}
+openstack-config --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit rabbit_hosts ${PHD_VAR_network_hosts_rabbitmq}
+openstack-config --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit rabbit_ha_queues true
+
+openstack-config --set /etc/ceilometer/ceilometer.conf coordination backend_url 'redis://vip-redis:6379'
+
+openstack-config --set /etc/ceilometer/ceilometer.conf publisher telemetry_secret ceilometersecret
+
+openstack-config --set /etc/ceilometer/ceilometer.conf service_credentials os_auth_url http://vip-keystone:5000/v2.0
+openstack-config --set /etc/ceilometer/ceilometer.conf service_credentials os_username ceilometer
+openstack-config --set /etc/ceilometer/ceilometer.conf service_credentials os_tenant_name services
+openstack-config --set /etc/ceilometer/ceilometer.conf service_credentials os_password ceilometertest
+
+openstack-config  --set /etc/ceilometer/ceilometer.conf database connection mongodb://${PHD_VAR_network_hosts_mongodb}:27017/ceilometer?replicaSet=ceilometer
+openstack-config --set /etc/ceilometer/ceilometer.conf database max_retries -1
+
+# keep last 5 days data only (value is in secs). Don't set to retain all data indefinetely.
+openstack-config --set  /etc/ceilometer/ceilometer.conf database metering_time_to_live 432000
+
+openstack-config --set  /etc/ceilometer/ceilometer.conf api host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+....
+
+target=$PHD_ENV_nodes1
+....
+
+pcs resource create redis redis wait_last_known_master=true --master meta notify=true ordered=true interleave=true
+pcs resource create vip-redis IPaddr2 ip=${PHD_VAR_network_internal}.217
+pcs resource create ceilometer-central systemd:openstack-ceilometer-central --clone interleave=true
+pcs resource create ceilometer-collector systemd:openstack-ceilometer-collector --clone interleave=true
+pcs resource create ceilometer-api systemd:openstack-ceilometer-api --clone interleave=true
+pcs resource create ceilometer-delay Delay startdelay=10 --clone interleave=true
+pcs resource create ceilometer-alarm-evaluator systemd:openstack-ceilometer-alarm-evaluator --clone interleave=true
+pcs resource create ceilometer-alarm-notifier systemd:openstack-ceilometer-alarm-notifier --clone interleave=true
+pcs resource create ceilometer-notification systemd:openstack-ceilometer-notification  --clone interleave=true
+
+pcs constraint order promote redis-master then start vip-redis
+pcs constraint colocation add vip-redis with master redis-master
+pcs constraint order start vip-redis then ceilometer-central-clone
+pcs constraint order start ceilometer-central-clone then ceilometer-collector-clone
+pcs constraint order start ceilometer-collector-clone then ceilometer-api-clone
+pcs constraint colocation add ceilometer-api-clone with ceilometer-collector-clone 
+pcs constraint order start ceilometer-api-clone then ceilometer-delay-clone
+pcs constraint colocation add ceilometer-delay-clone with ceilometer-api-clone
+pcs constraint order start ceilometer-delay-clone then ceilometer-alarm-evaluator-clone
+pcs constraint colocation add ceilometer-alarm-evaluator-clone with ceilometer-delay-clone
+pcs constraint order start ceilometer-alarm-evaluator-clone then ceilometer-alarm-notifier-clone
+pcs constraint colocation add ceilometer-alarm-notifier-clone with ceilometer-alarm-evaluator-clone
+pcs constraint order start ceilometer-alarm-notifier-clone then ceilometer-notification-clone
+pcs constraint colocation add ceilometer-notification-clone with ceilometer-alarm-notifier-clone
+
+if [ $PHD_VAR_deployment = collapsed ]; then
+    pcs constraint order start mongodb-clone then ceilometer-central-clone
+    pcs constraint order start keystone-clone then ceilometer-central-clone
+fi
+....

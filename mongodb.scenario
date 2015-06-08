@@ -1,0 +1,72 @@
+# This file can be used directly by 'phd', see 'build-all.sh' in this
+# directory for how it can be invoked.  The only requirement is a list
+# of nodes you'd like it to modify.
+#
+# The scope of each command-block is controlled by the preceeding
+# 'target' line. 
+#
+# - target=all
+#   The commands are executed on evey node provided
+#
+# - target=local
+#   The commands are executed from the node hosting phd. When not
+#   using phd, they should be run from some other independant host
+#   (such as the puppet master)
+#
+# - target=$PHD_ENV_nodes{N}
+#   The commands are executed on the Nth node provided.
+#   For example, to run on only the first node would be target=$PHD_ENV_nodes1
+#
+# Tasks to be performed at this step include:
+
+#################################
+# Scenario Requirements Section #
+#################################
+= REQUIREMENTS =
+nodes: 1
+
+######################
+# Deployment Scripts #
+######################
+= SCRIPTS =
+
+target=all
+....
+yum install -y mongodb mongodb-server
+
+# set binding IP address and replica set
+# also use smallfiles = true to stall installation while allocating N GB of journals
+sed -i \
+	-e 's#.*bind_ip.*#bind_ip = 0.0.0.0#g' \
+	-e 's/.*replSet.*/replSet = ceilometer/g' \
+	-e 's/.*smallfiles.*/smallfiles = true/g' \
+	/etc/mongod.conf
+
+# required to bootstrap mongodb
+systemctl start mongod
+systemctl stop mongod
+....
+
+target=$PHD_ENV_nodes1
+....
+pcs resource create mongodb systemd:mongod op start timeout=300s --clone
+
+# Setup replica (need to wait for mongodb to settle down first!)
+sleep 20
+
+# Careful with the node names here, must match FQDN
+rm -f /root/mongo_replica_setup.js
+cat > /root/mongo_replica_setup.js << EOF
+rs.initiate()
+sleep(10000)
+EOF
+
+for node in $PHD_ENV_nodes; do
+cat >> /root/mongo_replica_setup.js << EOF
+    rs.add("$node");
+EOF
+done
+
+mongo /root/mongo_replica_setup.js
+rm -f /root/mongo_replica_setup.js
+....

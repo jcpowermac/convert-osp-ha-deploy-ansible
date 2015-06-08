@@ -1,138 +1,139 @@
 ---
 
-name: Install software
-yum: name={{ item }} state=present
-with_items:
+- name: Install software
+  yum: name={{ item }} state=present
+  with_items:
 - openstack-glance
 - openstack-utils
 - python-openstackclient
 
-name: openstack-command set connection
-command: openstack-config --verbose --set /etc/glance/glance-api.conf database connection mysql://glance:glancetest@vip-db/glance
-register: cmd
-changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set max_retries
-command: openstack-config --verbose --set /etc/glance/glance-api.conf database max_retries -1
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set connection
+  command: openstack-config --verbose --set /etc/glance/glance-api.conf database connection mysql://glance:glancetest@vip-db/glance
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set flavor
-command: openstack-config --verbose --set /etc/glance/glance-api.conf paste_deploy flavor keystone
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set max_retries
+  command: openstack-config --verbose --set /etc/glance/glance-api.conf database max_retries -1
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set identity_uri
-command: openstack-config --verbose --set /etc/glance/glance-api.conf keystone_authtoken identity_uri http://vip-keystone:35357/
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set flavor
+  command: openstack-config --verbose --set /etc/glance/glance-api.conf paste_deploy flavor keystone
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set auth_uri
-command: openstack-config --verbose --set /etc/glance/glance-api.conf keystone_authtoken auth_uri http://vip-keystone:5000/
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set identity_uri
+  command: openstack-config --verbose --set /etc/glance/glance-api.conf keystone_authtoken identity_uri http://vip-keystone:35357/
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_tenant_name
-command: openstack-config --verbose --set /etc/glance/glance-api.conf keystone_authtoken admin_tenant_name services
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set auth_uri
+  command: openstack-config --verbose --set /etc/glance/glance-api.conf keystone_authtoken auth_uri http://vip-keystone:5000/
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_user
-command: openstack-config --verbose --set /etc/glance/glance-api.conf keystone_authtoken admin_user glance
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_tenant_name
+  command: openstack-config --verbose --set /etc/glance/glance-api.conf keystone_authtoken admin_tenant_name services
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_password
-command: openstack-config --verbose --set /etc/glance/glance-api.conf keystone_authtoken admin_password glancetest
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_user
+  command: openstack-config --verbose --set /etc/glance/glance-api.conf keystone_authtoken admin_user glance
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set notification_driver
-command: openstack-config --verbose --set /etc/glance/glance-api.conf DEFAULT notification_driver messaging
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_password
+  command: openstack-config --verbose --set /etc/glance/glance-api.conf keystone_authtoken admin_password glancetest
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set rabbit_hosts
-command: openstack-config --verbose --set /etc/glance/glance-api.conf oslo_messaging_rabbit rabbit_hosts {{ PHD_VAR_network_hosts_rabbitmq }}
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set notification_driver
+  command: openstack-config --verbose --set /etc/glance/glance-api.conf DEFAULT notification_driver messaging
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set rabbit_ha_queues
-command: openstack-config --verbose --set /etc/glance/glance-api.conf oslo_messaging_rabbit rabbit_ha_queues true
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set rabbit_hosts
+  command: openstack-config --verbose --set /etc/glance/glance-api.conf oslo_messaging_rabbit rabbit_hosts {{ PHD_VAR_network_hosts_rabbitmq }}
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set registry_host
-command: openstack-config --verbose --set /etc/glance/glance-api.conf DEFAULT registry_host vip-glance
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set rabbit_ha_queues
+  command: openstack-config --verbose --set /etc/glance/glance-api.conf oslo_messaging_rabbit rabbit_ha_queues true
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set bind_host
-command: openstack-config --verbose --set /etc/glance/glance-api.conf DEFAULT bind_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set registry_host
+  command: openstack-config --verbose --set /etc/glance/glance-api.conf DEFAULT registry_host vip-glance
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set connection
-command: openstack-config --verbose --set /etc/glance/glance-registry.conf database connection mysql://glance:glancetest@vip-db/glance
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set bind_host
+  command: openstack-config --verbose --set /etc/glance/glance-api.conf DEFAULT bind_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set max_retries
-command: openstack-config --verbose --set /etc/glance/glance-registry.conf database max_retries -1
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set connection
+  command: openstack-config --verbose --set /etc/glance/glance-registry.conf database connection mysql://glance:glancetest@vip-db/glance
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set flavor
-command: openstack-config --verbose --set /etc/glance/glance-registry.conf paste_deploy flavor keystone
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set max_retries
+  command: openstack-config --verbose --set /etc/glance/glance-registry.conf database max_retries -1
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set identity_uri
-command: openstack-config --verbose --set /etc/glance/glance-registry.conf keystone_authtoken identity_uri http://vip-keystone:35357/
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set flavor
+  command: openstack-config --verbose --set /etc/glance/glance-registry.conf paste_deploy flavor keystone
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set auth_uri
-command: openstack-config --verbose --set /etc/glance/glance-registry.conf keystone_authtoken auth_uri http://vip-keystone:5000/
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set identity_uri
+  command: openstack-config --verbose --set /etc/glance/glance-registry.conf keystone_authtoken identity_uri http://vip-keystone:35357/
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_tenant_name
-command: openstack-config --verbose --set /etc/glance/glance-registry.conf keystone_authtoken admin_tenant_name services
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set auth_uri
+  command: openstack-config --verbose --set /etc/glance/glance-registry.conf keystone_authtoken auth_uri http://vip-keystone:5000/
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_user
-command: openstack-config --verbose --set /etc/glance/glance-registry.conf keystone_authtoken admin_user glance
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_tenant_name
+  command: openstack-config --verbose --set /etc/glance/glance-registry.conf keystone_authtoken admin_tenant_name services
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_password
-command: openstack-config --verbose --set /etc/glance/glance-registry.conf keystone_authtoken admin_password glancetest
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_user
+  command: openstack-config --verbose --set /etc/glance/glance-registry.conf keystone_authtoken admin_user glance
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set notification_driver
-command: openstack-config --verbose --set /etc/glance/glance-registry.conf DEFAULT notification_driver messaging
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_password
+  command: openstack-config --verbose --set /etc/glance/glance-registry.conf keystone_authtoken admin_password glancetest
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set rabbit_hosts
-command: openstack-config --verbose --set /etc/glance/glance-registry.conf oslo_messaging_rabbit rabbit_hosts {{ PHD_VAR_network_hosts_rabbitmq }}
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set notification_driver
+  command: openstack-config --verbose --set /etc/glance/glance-registry.conf DEFAULT notification_driver messaging
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set rabbit_ha_queues
-command: openstack-config --verbose --set /etc/glance/glance-registry.conf oslo_messaging_rabbit rabbit_ha_queues true
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set rabbit_hosts
+  command: openstack-config --verbose --set /etc/glance/glance-registry.conf oslo_messaging_rabbit rabbit_hosts {{ PHD_VAR_network_hosts_rabbitmq }}
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set registry_host
-command: openstack-config --verbose --set /etc/glance/glance-registry.conf DEFAULT registry_host vip-glance
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set rabbit_ha_queues
+  command: openstack-config --verbose --set /etc/glance/glance-registry.conf oslo_messaging_rabbit rabbit_ha_queues true
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set bind_host
-command: openstack-config --verbose --set /etc/glance/glance-registry.conf DEFAULT bind_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set registry_host
+  command: openstack-config --verbose --set /etc/glance/glance-registry.conf DEFAULT registry_host vip-glance
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
+
+- name: openstack-command set bind_host
+  command: openstack-config --verbose --set /etc/glance/glance-registry.conf DEFAULT bind_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"

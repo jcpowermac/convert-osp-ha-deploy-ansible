@@ -1,8 +1,8 @@
 ---
 
-name: Install software
-yum: name={{ item }} state=present
-with_items:
+- name: Install software
+  yum: name={{ item }} state=present
+  with_items:
 - openstack-heat-engine
 - openstack-heat-api
 - openstack-heat-api-cfn
@@ -11,112 +11,113 @@ with_items:
 - openstack-utils
 - python-glanceclient
 
-name: openstack-command set connection
-command: openstack-config --verbose --set /etc/heat/heat.conf database connection mysql://heat:heattest@vip-db/heat
-register: cmd
-changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set database
-command: openstack-config --verbose --set /etc/heat/heat.conf database database max_retries -1
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set connection
+  command: openstack-config --verbose --set /etc/heat/heat.conf database connection mysql://heat:heattest@vip-db/heat
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_tenant_name
-command: openstack-config --verbose --set /etc/heat/heat.conf keystone_authtoken admin_tenant_name services
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set database
+  command: openstack-config --verbose --set /etc/heat/heat.conf database database max_retries -1
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_user
-command: openstack-config --verbose --set /etc/heat/heat.conf keystone_authtoken admin_user heat
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_tenant_name
+  command: openstack-config --verbose --set /etc/heat/heat.conf keystone_authtoken admin_tenant_name services
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_password
-command: openstack-config --verbose --set /etc/heat/heat.conf keystone_authtoken admin_password heattest
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_user
+  command: openstack-config --verbose --set /etc/heat/heat.conf keystone_authtoken admin_user heat
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set service_host
-command: openstack-config --verbose --set /etc/heat/heat.conf keystone_authtoken service_host vip-keystone
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_password
+  command: openstack-config --verbose --set /etc/heat/heat.conf keystone_authtoken admin_password heattest
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set auth_host
-command: openstack-config --verbose --set /etc/heat/heat.conf keystone_authtoken auth_host vip-keystone
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set service_host
+  command: openstack-config --verbose --set /etc/heat/heat.conf keystone_authtoken service_host vip-keystone
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set auth_uri
-command: openstack-config --verbose --set /etc/heat/heat.conf keystone_authtoken auth_uri http://vip-keystone:35357/v2.0
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set auth_host
+  command: openstack-config --verbose --set /etc/heat/heat.conf keystone_authtoken auth_host vip-keystone
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set keystone_ec2_uri
-command: openstack-config --verbose --set /etc/heat/heat.conf keystone_authtoken keystone_ec2_uri http://vip-keystone:35357/v2.0
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set auth_uri
+  command: openstack-config --verbose --set /etc/heat/heat.conf keystone_authtoken auth_uri http://vip-keystone:35357/v2.0
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set auth_uri
-command: openstack-config --verbose --set /etc/heat/heat.conf ec2authtoken auth_uri http://vip-keystone:5000/v2.0
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set keystone_ec2_uri
+  command: openstack-config --verbose --set /etc/heat/heat.conf keystone_authtoken keystone_ec2_uri http://vip-keystone:35357/v2.0
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set memcache_servers
-command: openstack-config --verbose --set /etc/heat/heat.conf DEFAULT memcache_servers {{ PHD_VAR_network_hosts_memcache }}
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set auth_uri
+  command: openstack-config --verbose --set /etc/heat/heat.conf ec2authtoken auth_uri http://vip-keystone:5000/v2.0
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set rabbit_hosts
-command: openstack-config --verbose --set /etc/heat/heat.conf oslo_messaging_rabbit rabbit_hosts {{ PHD_VAR_network_hosts_rabbitmq }}
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set memcache_servers
+  command: openstack-config --verbose --set /etc/heat/heat.conf DEFAULT memcache_servers {{ PHD_VAR_network_hosts_memcache }}
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set rabbit_ha_queues
-command: openstack-config --verbose --set /etc/heat/heat.conf oslo_messaging_rabbit rabbit_ha_queues true
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set rabbit_hosts
+  command: openstack-config --verbose --set /etc/heat/heat.conf oslo_messaging_rabbit rabbit_hosts {{ PHD_VAR_network_hosts_rabbitmq }}
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set bind_host
-command: openstack-config --verbose --set /etc/heat/heat.conf heat_api bind_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set rabbit_ha_queues
+  command: openstack-config --verbose --set /etc/heat/heat.conf oslo_messaging_rabbit rabbit_ha_queues true
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set bind_host
-command: openstack-config --verbose --set /etc/heat/heat.conf heat_api_cfn bind_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set bind_host
+  command: openstack-config --verbose --set /etc/heat/heat.conf heat_api bind_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set bind_host
-command: openstack-config --verbose --set /etc/heat/heat.conf heat_api_cloudwatch bind_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set bind_host
+  command: openstack-config --verbose --set /etc/heat/heat.conf heat_api_cfn bind_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set heat_metadata_server_url
-command: openstack-config --verbose --set /etc/heat/heat.conf DEFAULT heat_metadata_server_url vip-heat:8000
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set bind_host
+  command: openstack-config --verbose --set /etc/heat/heat.conf heat_api_cloudwatch bind_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set heat_waitcondition_server_url
-command: openstack-config --verbose --set /etc/heat/heat.conf DEFAULT heat_waitcondition_server_url vip-heat:8000/v1/waitcondition
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set heat_metadata_server_url
+  command: openstack-config --verbose --set /etc/heat/heat.conf DEFAULT heat_metadata_server_url vip-heat:8000
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set heat_watch_server_url
-command: openstack-config --verbose --set /etc/heat/heat.conf DEFAULT heat_watch_server_url vip-heat:8003
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set heat_waitcondition_server_url
+  command: openstack-config --verbose --set /etc/heat/heat.conf DEFAULT heat_waitcondition_server_url vip-heat:8000/v1/waitcondition
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set rpc_backend
-command: openstack-config --verbose --set /etc/heat/heat.conf DEFAULT rpc_backend heat.openstack.common.rpc.impl_kombu
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set heat_watch_server_url
+  command: openstack-config --verbose --set /etc/heat/heat.conf DEFAULT heat_watch_server_url vip-heat:8003
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set notification_driver
-command: openstack-config --verbose --set /etc/heat/heat.conf DEFAULT notification_driver heat.openstack.common.notifier.rpc_notifier
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set rpc_backend
+  command: openstack-config --verbose --set /etc/heat/heat.conf DEFAULT rpc_backend heat.openstack.common.rpc.impl_kombu
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set enable_cloud_watch_lite
-command: openstack-config --verbose --set /etc/heat/heat.conf DEFAULT enable_cloud_watch_lite false
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set notification_driver
+  command: openstack-config --verbose --set /etc/heat/heat.conf DEFAULT notification_driver heat.openstack.common.notifier.rpc_notifier
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
+
+- name: openstack-command set enable_cloud_watch_lite
+  command: openstack-config --verbose --set /etc/heat/heat.conf DEFAULT enable_cloud_watch_lite false
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"

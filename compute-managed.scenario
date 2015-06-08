@@ -1,0 +1,93 @@
+# This file can be used directly by 'phd', see 'build-all.sh' in this
+# directory for how it can be invoked.  The only requirement is a list
+# of nodes you'd like it to modify.
+#
+# The scope of each command-block is controlled by the preceeding
+# 'target' line. 
+#
+# - target=all
+#   The commands are executed on evey node provided
+#
+# - target=local
+#   The commands are executed from the node hosting phd. When not
+#   using phd, they should be run from some other independant host
+#   (such as the puppet master)
+#
+# - target=$PHD_ENV_nodes{N}
+#   The commands are executed on the Nth node provided.
+#   For example, to run on only the first node would be target=$PHD_ENV_nodes1
+#
+# Tasks to be performed at this step include:
+
+#################################
+# Scenario Requirements Section #
+#################################
+= REQUIREMENTS =
+nodes: 1
+
+= VARIABLES =
+
+PHD_VAR_deployment
+PHD_VAR_osp_configdir
+PHD_VAR_network_domain
+PHD_VAR_network_internal
+
+######################
+# Deployment Scripts #
+######################
+= SCRIPTS =
+
+target=all
+....
+
+if [ $PHD_VAR_deployment = segregated ]; then
+    echo "We don't document managed compute nodes in a segregated environment yet"
+
+    # Certainly none of the location constraints would work and the
+    # resource-discovery options are mostly redundant
+    exit 1
+fi
+
+yum install -y pacemaker-remote resource-agents pcs nfs-utils
+
+# Unfortunately https://bugzilla.redhat.com/show_bug.cgi?id=1175005
+# prevents NFS mounts from succeeding by default prior to a reboot
+
+systemctl daemon-reload
+systemctl start rpcbind.service
+systemctl start rpc-statd.service
+
+# Now mount /srv so that we can use $PHD_VAR_osp_configdir further down
+
+if grep -q srv /etc/fstab; then 
+    echo /srv is already mounted; 
+else
+    mkdir -p /srv
+    echo "${PHD_VAR_network_internal}.1:/srv       /srv                    nfs     defaults,v3     0 0" >> /etc/fstab
+    mount /srv
+fi
+
+if [ ! -e $PHD_VAR_osp_configdir/pcmk-authkey ]; then
+   dd if=/dev/urandom of=$PHD_VAR_osp_configdir/pcmk-authkey bs=4096 count=1
+fi
+
+# Until this makes it upstream
+#
+# The important part is to get this onto the /controller/ nodes, not
+# the compute nodes. It wont hurt there though. 
+wget -O /usr/sbin/fence_compute https://github.com/beekhof/osp-ha-deploy/raw/master/pcmk/fence_compute
+chmod a+x /usr/sbin/fence_compute 
+
+# Until this makes it upstream
+mkdir -p /usr/lib/ocf/resource.d/openstack/
+wget -O /usr/lib/ocf/resource.d/openstack/NovaCompute https://github.com/beekhof/osp-ha-deploy/raw/master/pcmk/NovaCompute
+chmod a+x /usr/lib/ocf/resource.d/openstack/NovaCompute
+
+mkdir -p /etc/pacemaker
+cp $PHD_VAR_osp_configdir/pcmk-authkey /etc/pacemaker/authkey
+
+if [ -z "$(pidof pacemakerd)" ]; then
+    chkconfig pacemaker_remote on
+    service pacemaker_remote start
+fi
+....

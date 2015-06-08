@@ -1,0 +1,207 @@
+# This file can be used directly by 'phd', see 'build-all.sh' in this
+# directory for how it can be invoked.  The only requirement is a list
+# of nodes you'd like it to modify.
+#
+# The scope of each command-block is controlled by the preceeding
+# 'target' line. 
+#
+# - target=all
+#   The commands are executed on evey node provided
+#
+# - target=local
+#   The commands are executed from the node hosting phd. When not
+#   using phd, they should be run from some other independant host
+#   (such as the puppet master)
+#
+# - target=$PHD_ENV_nodes{N}
+#   The commands are executed on the Nth node provided.
+#   For example, to run on only the first node would be target=$PHD_ENV_nodes1
+#
+# We start with 3 (or more, up to 16) nodes running a minimal CentOS 6
+#
+# Tasks to be performed include:
+# - setting up the required repositories from which to download Openstack and the HA-Addon
+# - disabling firewalls and SElinux. This is a necessary evil until the proper policies can be written.
+# - creating network bridges for use by VMs hosting OpenStack services
+# - normalizing network interface names
+# - fixing multicast
+# - removing /home and making the root partition as large as possible to maximumize the amount of space available to openstack
+
+#################################
+# Scenario Requirements Section #
+#################################
+= VARIABLES =
+
+PHD_VAR_network_domain
+PHD_VAR_network_internal
+PHD_VAR_network_nic_external
+PHD_VAR_network_nic_internal
+PHD_VAR_network_named_forwarders
+PHD_VAR_rpm_download
+
+#################################
+# Scenario Requirements Section #
+#################################
+= REQUIREMENTS =
+nodes: 9
+
+######################
+# Deployment Scripts #
+######################
+= SCRIPTS =
+
+target=all
+....
+
+yum install -y http://rhos-release.virt.bos.redhat.com/repos/rhos-release/rhos-release-latest.noarch.rpm
+
+rhos-release 7
+
+yum clean all
+yum update -y
+
+# ntpd conflicts with chrony
+yum erase -y chrony
+rm -f /etc/chrony*
+
+yum install -y pacemaker fence-agents resource-agents pcs libvirt qemu-kvm bind-utils net-tools tcpdump ntp ntpdate sos
+
+# The cluster shouldn't need NTP configured, but without it the
+# network goes bye-bye when using DHCP
+#
+# Must point to clock.redhat.com to work internally
+sed -i s/^server.*// /etc/ntp.conf
+echo "server $PHD_VAR_network_clock iburst" >> /etc/ntp.conf
+echo $PHD_VAR_network_clock > /etc/ntp/step-tickers
+
+#sync_to_hardware clock
+echo "SYNC_HWCLOCK=yes" >> /etc/sysconfig/ntpdate
+
+systemctl enable ntpdate
+systemctl start ntpdate
+
+systemctl enable ntpd
+systemctl start ntpd
+
+sed -i -e 's/=enforcing/=disabled/g' /etc/sysconfig/selinux
+sed -i -e 's/=enforcing/=disabled/g' /etc/selinux/config
+
+systemctl disable firewalld
+
+systemctl enable libvirtd
+systemctl start libvirtd
+virsh net-destroy default
+virsh net-undefine default
+
+lastoct="$(hostname -s | sed -e 's#^[a-z]*-##g' -e 's#^0*##g')"
+
+cat > /etc/sysconfig/network-scripts/ifcfg-ext0 << EOF
+DEVICE=ext0
+NAME=ext0
+TYPE=Bridge
+BOOTPROTO=dhcp
+ONBOOT=yes
+IPV6INIT=yes
+IPV6_AUTOCONF=yes
+EOF
+
+cat > /etc/sysconfig/network-scripts/ifcfg-vmnet0 << EOF
+DEVICE=vmnet0
+NAME=vmnet0
+TYPE=Bridge
+BOOTPROTO=static
+ONBOOT=yes
+IPV6INIT=yes
+IPV6_AUTOCONF=yes
+IPADDR=${PHD_VAR_network_internal}.$lastoct
+NETMASK=255.255.255.0
+NETWORK=${PHD_VAR_network_internal}.0
+EOF
+
+for device in `ls -1 /sys/class/net`; do
+    case ${PHD_VAR_network_nic_external} in
+    	 *${device}*) 
+	 cat > /etc/sysconfig/network-scripts/ifcfg-${device} << EOF
+DEVICE=${device}
+BOOTPROTO=none
+ONBOOT=yes
+BRIDGE=ext0
+NAME=${device}
+EOF
+	;;
+    esac
+    case ${PHD_VAR_network_nic_internal} in
+    	 *${device}*) 
+	 cat > /etc/sysconfig/network-scripts/ifcfg-${device} << EOF
+DEVICE=${device}
+BOOTPROTO=none
+ONBOOT=yes
+BRIDGE=vmnet0
+NAME=${device}
+EOF
+	;;
+    esac
+done
+
+if grep -q ip_forward /etc/sysctl.conf; then
+    sed -i -e 's#ip_forward.*#ip_forward = 1#g' /etc/sysctl.conf
+else
+   echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
+fi
+
+echo "echo 1 > /sys/class/net/ext0/bridge/multicast_querier" >> /etc/rc.d/rc.local
+echo "echo 1 > /sys/class/net/vmnet0/bridge/multicast_querier" >> /etc/rc.d/rc.local
+chmod +x /etc/rc.d/rc.local
+
+# Turn off auto-generation of resolv.conf so we can override it 
+# make a backup that we will need for gateway scenario otherwise
+# we have a catch 22
+rm -f /etc/resolv.conf.backup
+cp /etc/resolv.conf /etc/resolv.conf.backup
+echo PEERDNS=no >> /etc/sysconfig/network-scripts/ifcfg-ext0
+echo search vmnet.${PHD_VAR_network_domain} ${PHD_VAR_network_domain} > /etc/resolv.conf
+echo nameserver ${PHD_VAR_network_internal}.1 >> /etc/resolv.conf
+
+# get rid of /home from beaker
+sed -i -e 's#.*home.*##g' /etc/fstab
+umount /home
+
+# remove home lv
+lvremove -f /dev/mapper/*home
+
+# expand root lv to 50% vg
+lvresize -f -l50%VG /dev/mapper/*root
+
+# expand root fs
+xfs_growfs /dev/mapper/*-root
+
+# create the snapshot
+lvcreate -s -n baremetal_snap -l100%FREE /dev/mapper/*root
+
+# regenerate initramfs to include dm-snapshot modules/utils
+for i in $(ls /boot/vmlinuz-*x86*); do
+	ver=$(basename $i | sed -e 's#vmlinuz-##g')
+	dracut -f --kver $ver
+done
+
+....
+
+# Implied by the reboot below
+#target=all
+#....
+#service network restart
+#/etc/rc.local
+#....
+
+target=local
+....
+# Reboot each node and wait for it to return
+
+# disable set -e when calling phd_cmd_* because
+# phd doesn't manage all return codes properly
+set +e
+for node in $(echo $PHD_ENV_nodes); do
+    phd_cmd_exec "reboot > /dev/null 2>&1" "$node"
+    phd_wait_connection 2400 $node || exit 1
+done
+....

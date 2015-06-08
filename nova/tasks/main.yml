@@ -1,8 +1,8 @@
 ---
 
-name: Install software
-yum: name={{ item }} state=present
-with_items:
+- name: Install software
+  yum: name={{ item }} state=present
+  with_items:
 - openstack-nova-console
 - openstack-nova-novncproxy
 - openstack-utils
@@ -12,162 +12,163 @@ with_items:
 - python-cinderclient
 - python-memcached
 
-name: openstack-command set rabbit_hosts
-command: openstack-config --verbose --set /etc/nova/nova.conf oslo_messaging_rabbit rabbit_hosts {{ PHD_VAR_network_hosts_rabbitmq }}
-register: cmd
-changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set rabbit_ha_queues
-command: openstack-config --verbose --set /etc/nova/nova.conf oslo_messaging_rabbit rabbit_ha_queues true
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set rabbit_hosts
+  command: openstack-config --verbose --set /etc/nova/nova.conf oslo_messaging_rabbit rabbit_hosts {{ PHD_VAR_network_hosts_rabbitmq }}
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set memcached_servers
-command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT memcached_servers {{ PHD_VAR_network_hosts_memcache }}
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set rabbit_ha_queues
+  command: openstack-config --verbose --set /etc/nova/nova.conf oslo_messaging_rabbit rabbit_ha_queues true
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set vncserver_proxyclient_address
-command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT vncserver_proxyclient_address $(host $(hostname -s) | awk '{print $4}')
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set memcached_servers
+  command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT memcached_servers {{ PHD_VAR_network_hosts_memcache }}
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set vncserver_listen
-command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT vncserver_listen $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set vncserver_proxyclient_address
+  command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT vncserver_proxyclient_address $(host $(hostname -s) | awk '{print $4}')
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set vncserver_proxyclient_address
-command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT vncserver_proxyclient_address $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set vncserver_listen
+  command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT vncserver_listen $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set novncproxy_host
-command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT novncproxy_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set vncserver_proxyclient_address
+  command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT vncserver_proxyclient_address $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set metadata_listen
-command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT metadata_listen $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set novncproxy_host
+  command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT novncproxy_host $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set osapi_compute_listen
-command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT osapi_compute_listen $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set metadata_listen
+  command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT metadata_listen $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set novncproxy_base_url
-command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT novncproxy_base_url http://{{ PHD_VAR_network_hosts_gateway }}.{{ PHD_VAR_network_domain }}:6080/vnc_auto.html
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set osapi_compute_listen
+  command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT osapi_compute_listen $(ip addr show dev eth1 scope global | grep dynamic| sed -e 's#.*inet ##g' -e 's#/.*##g')
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set auth_strategy
-command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT auth_strategy keystone
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set novncproxy_base_url
+  command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT novncproxy_base_url http://{{ PHD_VAR_network_hosts_gateway }}.{{ PHD_VAR_network_domain }}:6080/vnc_auto.html
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set metadata_host
-command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT metadata_host {{ PHD_VAR_network_internal }}.210
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set auth_strategy
+  command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT auth_strategy keystone
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set metadata_listen_port
-command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT metadata_listen_port 8775
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set metadata_host
+  command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT metadata_host {{ PHD_VAR_network_internal }}.210
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set service_metadata_proxy
-command: openstack-config --verbose --set /etc/nova/nova.conf neutron service_metadata_proxy True
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set metadata_listen_port
+  command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT metadata_listen_port 8775
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set metadata_proxy_shared_secret
-command: openstack-config --verbose --set /etc/nova/nova.conf neutron metadata_proxy_shared_secret metatest
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set service_metadata_proxy
+  command: openstack-config --verbose --set /etc/nova/nova.conf neutron service_metadata_proxy True
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set host
-command: openstack-config --verbose --set /etc/nova/nova.conf glance host vip-glance
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set metadata_proxy_shared_secret
+  command: openstack-config --verbose --set /etc/nova/nova.conf neutron metadata_proxy_shared_secret metatest
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set network_api_class
-command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT network_api_class nova.network.neutronv2.api.API
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set host
+  command: openstack-config --verbose --set /etc/nova/nova.conf glance host vip-glance
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set url
-command: openstack-config --verbose --set /etc/nova/nova.conf neutron url http://vip-neutron:9696/
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set network_api_class
+  command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT network_api_class nova.network.neutronv2.api.API
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_tenant_name
-command: openstack-config --verbose --set /etc/nova/nova.conf neutron admin_tenant_name services
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set url
+  command: openstack-config --verbose --set /etc/nova/nova.conf neutron url http://vip-neutron:9696/
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_username
-command: openstack-config --verbose --set /etc/nova/nova.conf neutron admin_username neutron
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_tenant_name
+  command: openstack-config --verbose --set /etc/nova/nova.conf neutron admin_tenant_name services
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_password
-command: openstack-config --verbose --set /etc/nova/nova.conf neutron admin_password neutrontest
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_username
+  command: openstack-config --verbose --set /etc/nova/nova.conf neutron admin_username neutron
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_auth_url
-command: openstack-config --verbose --set /etc/nova/nova.conf neutron admin_auth_url http://vip-keystone:35357/v2.0
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_password
+  command: openstack-config --verbose --set /etc/nova/nova.conf neutron admin_password neutrontest
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set firewall_driver
-command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT firewall_driver nova.virt.firewall.NoopFirewallDriver
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_auth_url
+  command: openstack-config --verbose --set /etc/nova/nova.conf neutron admin_auth_url http://vip-keystone:35357/v2.0
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set libvirt_vif_driver
-command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT libvirt_vif_driver nova.virt.libvirt.vif.LibvirtHybridOVSBridgeDriver
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set firewall_driver
+  command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT firewall_driver nova.virt.firewall.NoopFirewallDriver
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set use_local
-command: openstack-config --verbose --set /etc/nova/nova.conf conductor use_local false
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set libvirt_vif_driver
+  command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT libvirt_vif_driver nova.virt.libvirt.vif.LibvirtHybridOVSBridgeDriver
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set connection
-command: openstack-config --verbose --set /etc/nova/nova.conf database connection mysql://nova:novatest@vip-db/nova
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set use_local
+  command: openstack-config --verbose --set /etc/nova/nova.conf conductor use_local false
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set max_retries
-command: openstack-config --verbose --set /etc/nova/nova.conf database max_retries -1
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set connection
+  command: openstack-config --verbose --set /etc/nova/nova.conf database connection mysql://nova:novatest@vip-db/nova
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set scheduler_host_subset_size
-command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT scheduler_host_subset_size 30
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set max_retries
+  command: openstack-config --verbose --set /etc/nova/nova.conf database max_retries -1
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set auth_host
-command: openstack-config --verbose --set /etc/nova/api-paste.ini filter:authtoken auth_host vip-keystone
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set scheduler_host_subset_size
+  command: openstack-config --verbose --set /etc/nova/nova.conf DEFAULT scheduler_host_subset_size 30
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_tenant_name
-command: openstack-config --verbose --set /etc/nova/api-paste.ini filter:authtoken admin_tenant_name services
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set auth_host
+  command: openstack-config --verbose --set /etc/nova/api-paste.ini filter:authtoken auth_host vip-keystone
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_user
-command: openstack-config --verbose --set /etc/nova/api-paste.ini filter:authtoken admin_user compute
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_tenant_name
+  command: openstack-config --verbose --set /etc/nova/api-paste.ini filter:authtoken admin_tenant_name services
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
 
-name: openstack-command set admin_password
-command: openstack-config --verbose --set /etc/nova/api-paste.ini filter:authtoken admin_password novatest
-register: cmd
-changed_when: "'changed' in cmd.stderr"
+- name: openstack-command set admin_user
+  command: openstack-config --verbose --set /etc/nova/api-paste.ini filter:authtoken admin_user compute
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"
+
+- name: openstack-command set admin_password
+  command: openstack-config --verbose --set /etc/nova/api-paste.ini filter:authtoken admin_password novatest
+  register: cmd
+  changed_when: "'changed' in cmd.stderr"

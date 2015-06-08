@@ -32,13 +32,12 @@ def split_openstack_config_arguments(line):
     space = " "
     new_line = space.join(args)
 
-    output = """\nname: openstack-command set %s
-command: %s
-register: cmd
-changed_when: \"'changed' in cmd.stderr\"\n""" % (args[5], new_line)
+    output = """\n- name: openstack-command set %s
+  command: %s
+  register: cmd
+  changed_when: \"'changed' in cmd.stderr\"\n""" % (args[5], new_line)
     #print output
     file.writelines(output)
-
 
 
 def split_yum_arguments(line):
@@ -57,23 +56,46 @@ def split_yum_arguments(line):
             new_args.append(a)
 
     with_items = yaml.dump(new_args, default_flow_style=False)
-    output = """\nname: Install software
-yum: name={{ item }} state=present
-with_items:\n%s""" % with_items
-    print output
+    output = """\n- name: Install software
+  yum: name={{ item }} state=present
+  with_items:\n%s\n""" % with_items
     file.writelines(output)
 
 def match_yum_line(line):
     match = re.search("^yum", line)
     if match is not None:
         split_yum_arguments(line)
-
+        return True
+    return False
 
 def match_openstack_config_line(line):
     match = re.search("^openstack-config", line)
     if match is not None:
         split_openstack_config_arguments(line)
+        return True
+    return False
 
+def split_systemctl_arguments(line):
+    args = line.split()
+    parameters = "- name: %s" % line
+    write_to_file = False
+
+    for a in args:
+        if "enable" in a:
+            parameters += "  service: name=%s enabled=yes state=started\n" % args[1]
+            write_to_file = True
+        elif "disable" in a:
+            parameters += "  service: name=%s enabled=no state=stopped\n" % args[1]
+            write_to_file = True
+    if write_to_file:
+        file.writelines(parameters)
+
+def match_systemctl_line(line):
+    match = re.search("^systemctl", line)
+    if match is not None:
+        split_systemctl_arguments(line)
+        return True
+    return False
 
 def main():
     global file
@@ -85,10 +107,13 @@ def main():
 
     file = open("%s/tasks/main.yml" % service[0], "w+")
     file.writelines("---\n")
-    print "---"
+
     for line in f:
-        match_openstack_config_line(line)
-        match_yum_line(line)
+        result = match_openstack_config_line(line)
+        if not result:
+            result = match_yum_line(line)
+        if not result:
+            match_systemctl_line(line)
 
     file.close()
 if __name__ == '__main__':

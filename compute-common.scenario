@@ -1,0 +1,168 @@
+# This file can be used directly by 'phd', see 'build-all.sh' in this
+# directory for how it can be invoked.  The only requirement is a list
+# of nodes you'd like it to modify.
+#
+# The scope of each command-block is controlled by the preceeding
+# 'target' line. 
+#
+# - target=all
+#   The commands are executed on evey node provided
+#
+# - target=local
+#   The commands are executed from the node hosting phd. When not
+#   using phd, they should be run from some other independant host
+#   (such as the puppet master)
+#
+# - target=$PHD_ENV_nodes{N}
+#   The commands are executed on the Nth node provided.
+#   For example, to run on only the first node would be target=$PHD_ENV_nodes1
+#
+# Tasks to be performed at this step include:
+
+#################################
+# Scenario Requirements Section #
+#################################
+= REQUIREMENTS =
+nodes: 1
+
+= VARIABLES =
+
+PHD_VAR_env_password
+PHD_VAR_network_domain
+PHD_VAR_network_hosts_memcache
+PHD_VAR_network_hosts_mongodb
+PHD_VAR_network_hosts_rabbitmq
+PHD_VAR_network_internal
+
+######################
+# Deployment Scripts #
+######################
+= SCRIPTS =
+
+target=all
+....
+yum install -y openstack-nova-compute openstack-utils python-cinder openstack-neutron-openvswitch openstack-ceilometer-compute python-memcached wget openstack-neutron
+
+systemctl disable firewalld
+systemctl stop firewalld
+ 
+systemctl enable pcsd
+systemctl start pcsd
+ 
+echo ${PHD_VAR_env_password} | passwd --stdin hacluster
+
+systemctl enable openvswitch
+systemctl start openvswitch
+
+ovs-vsctl add-br br-int
+
+systemctl stop libvirtd
+systemctl disable libvirtd
+
+# NOTE: vmnet is the interface connected to the internal network.
+openstack-config --set /etc/nova/nova.conf DEFAULT vncserver_proxyclient_address $(ip addr show dev vmnet0 scope global | grep inet | sed -e 's#.*inet ##g' -e 's#/.*##g')
+openstack-config --set /etc/nova/nova.conf DEFAULT vncserver_listen 0.0.0.0
+
+# NOTE: same consideration as nova configuration applies here. They need to match.
+openstack-config --set /etc/nova/nova.conf DEFAULT novncproxy_base_url http://${PHD_VAR_network_hosts_gateway}.${PHD_VAR_network_domain}:6080/vnc_auto.html
+
+openstack-config --set /etc/nova/nova.conf database connection mysql://nova:novatest@vip-db/nova
+openstack-config --set /etc/nova/nova.conf database max_retries -1
+
+openstack-config --set /etc/nova/nova.conf DEFAULT auth_strategy keystone
+
+openstack-config --set /etc/nova/nova.conf DEFAULT memcache_servers  ${PHD_VAR_network_hosts_memcache}
+openstack-config --set /etc/nova/nova.conf oslo_messaging_rabbit rabbit_hosts ${PHD_VAR_network_hosts_rabbitmq}
+openstack-config --set /etc/nova/nova.conf oslo_messaging_rabbit rabbit_ha_queues true
+
+# FIX ME: nova doesn't like hostnames anymore?
+# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_host vip-nova
+openstack-config --set /etc/nova/nova.conf DEFAULT metadata_host ${PHD_VAR_network_internal}.210
+
+openstack-config --set /etc/nova/nova.conf DEFAULT metadata_listen 0.0.0.0
+openstack-config --set /etc/nova/nova.conf DEFAULT metadata_listen_port 8775
+openstack-config --set /etc/nova/nova.conf neutron service_metadata_proxy True
+openstack-config --set /etc/nova/nova.conf neutron metadata_proxy_shared_secret metatest
+
+openstack-config --set /etc/nova/nova.conf glance host vip-glance
+
+openstack-config --set /etc/nova/nova.conf DEFAULT network_api_class nova.network.neutronv2.api.API
+openstack-config --set /etc/nova/nova.conf neutron url http://vip-neutron:9696/
+openstack-config --set /etc/nova/nova.conf neutron admin_tenant_name services
+openstack-config --set /etc/nova/nova.conf neutron admin_username neutron
+openstack-config --set /etc/nova/nova.conf neutron admin_password neutrontest
+openstack-config --set /etc/nova/nova.conf neutron admin_auth_url http://vip-keystone:35357/v2.0
+
+openstack-config --set /etc/nova/nova.conf DEFAULT firewall_driver nova.virt.firewall.NoopFirewallDriver
+
+openstack-config --set /etc/nova/nova.conf DEFAULT libvirt_vif_driver nova.virt.libvirt.vif.LibvirtGenericVIFDriver
+
+openstack-config --set /etc/nova/nova.conf DEFAULT security_group_api neutron
+
+openstack-config --set /etc/nova/nova.conf conductor use_local false
+
+# REQUIRED FOR A/A scheduler
+openstack-config --set /etc/nova/nova.conf DEFAULT scheduler_host_subset_size 30
+
+openstack-config --set /etc/nova/api-paste.ini filter:authtoken auth_host vip-keystone
+openstack-config --set /etc/nova/api-paste.ini filter:authtoken admin_tenant_name services
+openstack-config --set /etc/nova/api-paste.ini filter:authtoken admin_user compute
+openstack-config --set /etc/nova/api-paste.ini filter:authtoken admin_password novatest
+
+openstack-config --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken admin_tenant_name services
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken admin_user neutron
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken admin_password neutrontest
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_uri http://vip-keystone:35357/v2.0/
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken identity_uri http://vip-keystone:5000/
+
+openstack-config --set /etc/neutron/neutron.conf oslo_messaging_rabbit rabbit_hosts ${PHD_VAR_network_hosts_rabbitmq}
+openstack-config --set /etc/neutron/neutron.conf oslo_messaging_rabbit rabbit_ha_queues true
+
+openstack-config --set /etc/neutron/neutron.conf DEFAULT notification_driver neutron.openstack.common.notifier.rpc_notifier
+
+openstack-config --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini agent tunnel_types  vxlan
+openstack-config --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini agent vxlan_udp_port 4789
+openstack-config --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini ovs enable_tunneling True
+openstack-config --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini ovs tunnel_id_ranges 1:1000
+openstack-config --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini ovs tenant_network_type vxlan
+
+openstack-config --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini ovs integration_bridge br-int
+openstack-config --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini ovs tunnel_bridge br-tun
+openstack-config --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini ovs local_ip $(ip addr show dev vmnet0  scope global | grep inet | sed -e 's#.*inet ##g' -e 's#/.*##g')
+
+openstack-config --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini securitygroup firewall_driver neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver
+
+openstack-config --set /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini agent l2_population False
+
+openstack-config --set /etc/nova/nova.conf DEFAULT instance_usage_audit True
+openstack-config --set /etc/nova/nova.conf DEFAULT instance_usage_audit_period hour
+openstack-config --set /etc/nova/nova.conf DEFAULT notify_on_state_change vm_and_task_state
+openstack-config --set /etc/nova/nova.conf DEFAULT notification_driver nova.openstack.common.notifier.rpc_notifier
+sed -i -e 's#nova.openstack.common.notifier.rpc_notifier#nova.openstack.common.notifier.rpc_notifier\nnotification_driver = ceilometer.compute.nova_notifier#g' /etc/nova/nova.conf
+
+openstack-config --set /etc/ceilometer/ceilometer.conf keystone_authtoken auth_host vip-keystone
+openstack-config --set /etc/ceilometer/ceilometer.conf keystone_authtoken auth_port 35357
+openstack-config --set /etc/ceilometer/ceilometer.conf keystone_authtoken auth_protocol http
+openstack-config --set /etc/ceilometer/ceilometer.conf keystone_authtoken admin_tenant_name services
+openstack-config --set /etc/ceilometer/ceilometer.conf keystone_authtoken admin_user ceilometer
+openstack-config --set /etc/ceilometer/ceilometer.conf keystone_authtoken admin_password ceilometertest
+
+openstack-config --set /etc/ceilometer/ceilometer.conf DEFAULT memcache_servers ${PHD_VAR_network_hosts_memcache}
+openstack-config --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit rabbit_hosts ${PHD_VAR_network_hosts_rabbitmq}
+openstack-config --set /etc/ceilometer/ceilometer.conf oslo_messaging_rabbit rabbit_ha_queues true
+
+
+openstack-config --set /etc/ceilometer/ceilometer.conf publisher telemetry_secret ceilometersecret
+
+openstack-config --set /etc/ceilometer/ceilometer.conf service_credentials os_auth_url http://vip-keystone:5000/v2.0
+openstack-config --set /etc/ceilometer/ceilometer.conf service_credentials os_username ceilometer
+openstack-config --set /etc/ceilometer/ceilometer.conf service_credentials os_tenant_name services
+openstack-config --set /etc/ceilometer/ceilometer.conf service_credentials os_password ceilometertest
+
+openstack-config --set /etc/ceilometer/ceilometer.conf database connection mongodb://${PHD_VAR_network_hosts_mongodb}:27017/ceilometer?replicaSet=ceilometer
+openstack-config --set /etc/ceilometer/ceilometer.conf database connection max_retries -1
+
+# keep last 5 days data only (value is in secs)
+openstack-config --set  /etc/ceilometer/ceilometer.conf database metering_time_to_live 432000
+....

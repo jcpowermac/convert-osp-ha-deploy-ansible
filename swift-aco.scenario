@@ -1,0 +1,104 @@
+# This file can be used directly by 'phd', see 'build-all.sh' in this
+# directory for how it can be invoked.  The only requirement is a list
+# of nodes you'd like it to modify.
+#
+# The scope of each command-block is controlled by the preceeding
+# 'target' line. 
+#
+# - target=all
+#   The commands are executed on evey node provided
+#
+# - target=local
+#   The commands are executed from the node hosting phd. When not
+#   using phd, they should be run from some other independant host
+#   (such as the puppet master)
+#
+# - target=$PHD_ENV_nodes{N}
+#   The commands are executed on the Nth node provided.
+#   For example, to run on only the first node would be target=$PHD_ENV_nodes1
+#
+# Tasks to be performed at this step include:
+
+#################################
+# Scenario Requirements Section #
+#################################
+= REQUIREMENTS =
+nodes: 3
+
+= VARIABLES =
+
+PHD_VAR_deployment
+PHD_VAR_secrets_swift_prefix
+PHD_VAR_secrets_swift_suffix
+
+######################
+# Deployment Scripts #
+######################
+= SCRIPTS =
+
+target=all
+....
+yum install -y openstack-swift-object openstack-swift-container openstack-swift-account openstack-utils rsync xfsprogs
+
+# If you have a dedicated device, format it here and have the cluster mount it as per 'swift-fs' below
+# We don't, but swift wants a different partition than /, so we'll create a loopback file and mount that for 'swift-fs'
+
+mkdir -p /local/swiftstorage/target
+truncate --size=1G /local/swift.img
+losetup /dev/loop0 /local/swift.img
+mkfs.xfs /dev/loop0
+mount /dev/loop0 /local/swiftstorage/target
+chown -R swift:swift /local
+umount /dev/loop0
+
+# Some extra magic to set up the loopback device after a reboot
+echo "losetup /dev/loop0 /local/swift.img" >> /etc/rc.d/rc.local 
+chmod a+x /etc/rc.d/rc.local 
+
+openstack-config --set /etc/swift/swift.conf swift-hash swift_hash_path_prefix ${PHD_VAR_secrets_swift_prefix}
+openstack-config --set /etc/swift/swift.conf swift-hash swift_hash_path_suffix ${PHD_VAR_secrets_swift_suffix}
+openstack-config --set /etc/swift/swift.conf filter:ceilometer use egg:ceilometer#swift
+openstack-config --set /etc/swift/swift.conf pipeline:main pipeline "healthcheck cache authtoken keystoneauth proxy-server ceilometer"
+
+openstack-config --set /etc/swift/object-server.conf DEFAULT bind_ip 0.0.0.0
+openstack-config --set /etc/swift/object-server.conf DEFAULT devices /local/swiftstorage
+openstack-config --set /etc/swift/object-server.conf DEFAULT mount_check false
+openstack-config --set /etc/swift/account-server.conf DEFAULT bind_ip 0.0.0.0
+openstack-config --set /etc/swift/account-server.conf DEFAULT devices /local/swiftstorage
+openstack-config --set /etc/swift/account-server.conf DEFAULT mount_check false
+openstack-config --set /etc/swift/container-server.conf DEFAULT bind_ip 0.0.0.0
+openstack-config --set /etc/swift/container-server.conf DEFAULT devices /local/swiftstorage
+openstack-config --set /etc/swift/container-server.conf DEFAULT mount_check false
+
+openstack-config --set /etc/swift/object-server.conf DEFAULT mount_check false
+openstack-config --set /etc/swift/account-server.conf DEFAULT mount_check false
+openstack-config --set /etc/swift/container-server.conf DEFAULT mount_check false
+
+chown -R root:swift /etc/swift
+....
+
+target=all
+....
+if ! pcs resource show swift-fs > /dev/null 2>&1; then
+
+    # We must be either the first node to run, or configuring
+    # single-node clusters for a segregated deployment
+
+    pcs resource create swift-fs Filesystem device="/dev/loop0" directory="/local/swiftstorage/target" fstype="xfs" force_clones="yes" --clone interleave=true
+
+    pcs resource create swift-account systemd:openstack-swift-account --clone interleave=true
+    pcs constraint colocation add swift-account-clone with swift-fs-clone
+    pcs constraint order start swift-fs-clone then swift-account-clone
+
+    pcs resource create swift-container systemd:openstack-swift-container --clone interleave=true
+    pcs constraint colocation add swift-container-clone with swift-account-clone
+    pcs constraint order start swift-account-clone then swift-container-clone
+
+    pcs resource create swift-object systemd:openstack-swift-object --clone interleave=true
+    pcs constraint colocation add swift-object-clone with swift-container-clone
+    pcs constraint order start swift-container-clone then swift-object-clone
+    if [ $PHD_VAR_deployment = collapsed ]; then
+	pcs constraint order start keystone-clone then swift-account-clone
+   fi
+fi
+....

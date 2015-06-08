@@ -1,8 +1,11 @@
 ---
 
-name: Install software
-yum: name={{ item }} state=present
-with_items:
+- name: Install software
+  yum: name={{ item }} state=present
+  with_items:
 - mariadb-galera-server
 - xinetd
 - rsync
+
+- name: systemctl enable xinetd
+  service: name=enable enabled=yes state=started
